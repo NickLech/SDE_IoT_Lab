@@ -1,7 +1,7 @@
 # services/dashboard
 
-Dashboard Dash (porta 8050). Legge `GET /state` dal central a intervalli (`dcc.Interval`).
+Dash dashboard (port 8050). Polls `GET /state` from `central` (`dcc.Interval`).
 
-Pannelli: mappa del campo (3 zone), grafici per zona (grezzo vs fuso), stato sprinkler, **stato esercizi** (rosso/verde), evidenza sensori scartati come outlier.
+Panels: field map (3 zones), per-zone charts (raw vs fused), sprinkler state, **exercise status** (red/green), sensors rejected as outliers.
 
-Nessun DB: lo storico è quello restituito dal central al caricamento della pagina (finestra in memoria).
+No DB: history is the in-memory window `central` returns when the page loads.

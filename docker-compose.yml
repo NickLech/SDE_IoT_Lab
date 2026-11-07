@@ -1,3 +1,9 @@
+# MQTT part (working): broker + soil (push) + sprinkler (actuator).
+#   docker compose up --build
+# Services not implemented yet (HTTP pull, central, dashboard) use the "wip" profile:
+#   docker compose --profile wip up --build
+# Remove their `profiles` line once they are ready.
+
 services:
   broker:
     image: eclipse-mosquitto:2
@@ -5,8 +11,53 @@ services:
       - ./services/broker/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
     ports:
       - "1883:1883"
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_sub -h localhost -t '$$SYS/broker/version' -C 1 -W 3 >/dev/null"]
+      interval: 30s
+      start_period: 20s
+      start_interval: 2s   # fast checks at startup (needs Docker Engine 25+)
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
 
+  soil:
+    build: ./services/soil
+    environment:
+      MQTT_HOST: broker
+      ZONES: "zone1,zone2,zone3"
+      SENSORS_PER_ZONE: "3"
+      PUBLISH_INTERVAL_S: "2"
+      NOISE_STD: "0.8"
+      SPIKE_PROB: "0.03"
+      TIME_SCALE: "${TIME_SCALE:-1}"   # e.g. TIME_SCALE=8 docker compose up, for the smoke test
+    depends_on:
+      broker:
+        condition: service_healthy
+    restart: unless-stopped
+
+  sprinkler:
+    build: ./services/sprinkler
+    environment:
+      MQTT_HOST: broker
+      ZONES: "zone1,zone2,zone3"
+      DEFAULT_DURATION_S: "30"
+    depends_on:
+      broker:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Prints every field message: docker compose --profile debug up monitor
+  monitor:
+    image: eclipse-mosquitto:2
+    profiles: ["debug"]
+    command: ["mosquitto_sub", "-h", "broker", "-t", "field/#", "-t", "debug/#", "-v"]
+    depends_on:
+      broker:
+        condition: service_healthy
+
+  # ---------------------------------------------------------------- to be implemented
   temperature:
+    profiles: ["wip"]
     build: ./services/temperature
     environment:
       NOISE_STD: "0.4"
@@ -15,6 +66,7 @@ services:
       - "5001:5001"
 
   humidity:
+    profiles: ["wip"]
     build: ./services/humidity
     environment:
       NOISE_STD: "1.5"
@@ -22,23 +74,8 @@ services:
     ports:
       - "5002:5002"
 
-  soil:
-    build: ./services/soil
-    environment:
-      MQTT_HOST: broker
-      NOISE_STD: "0.8"
-      SPIKE_PROB: "0.03"
-    depends_on:
-      - broker
-
-  sprinkler:
-    build: ./services/sprinkler
-    environment:
-      MQTT_HOST: broker
-    depends_on:
-      - broker
-
   central:
+    profiles: ["wip"]
     build: ./services/central
     environment:
       MQTT_HOST: broker
@@ -48,11 +85,15 @@ services:
     ports:
       - "5000:5000"
     depends_on:
-      - broker
-      - temperature
-      - humidity
+      broker:
+        condition: service_healthy
+      temperature:
+        condition: service_started
+      humidity:
+        condition: service_started
 
   dashboard:
+    profiles: ["wip"]
     build: ./services/dashboard
     environment:
       CENTRAL_URL: http://central:5000

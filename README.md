@@ -1,35 +1,35 @@
 # IoT Monitoring with SOA
 
-Laboratorio pratico (≈60 min di esempi + esercizi) su monitoraggio IoT service-oriented applicato all'**irrigazione di un campo diviso in zone**.
+Hands-on lab (≈60 min of examples + exercises) on service-oriented IoT monitoring, applied to **irrigation of a field split into zones**.
 
-## Scelte di progetto (dai colloqui con i professori)
+## Design choices (from the meetings with the professors)
 
-- Architettura **semplificata**: sensori che *vengono interrogati* (pull, HTTP) e sensori che *inviano* (push, MQTT).
-- **Massimo 3 tipi di container sensore** diversi: `temperature`, `humidity`, `soil`.
-- Nessun database: la dashboard tiene solo i dati della sessione corrente.
-- Nessuna API esterna (niente OpenWeather).
-- Protocolli: HTTP e MQTT. Linguaggio: Python. Dashboard: Dash.
-- Algoritmi: VPD (Vapor Pressure Deficit) + fusione ridondante dei sensori del suolo (media pesata / Kalman).
-- Gli esempi **completano la dashboard**: all'inizio i pannelli sono rossi, a ogni esercizio completato diventano verdi.
-- Validatore automatico degli esercizi: non richiesto (opzionale, vedi `TASKS.md`).
+- **Simplified** architecture: sensors that are *polled* (pull, HTTP) and sensors that *push* (MQTT).
+- **At most 3 sensor container types**: `temperature`, `humidity`, `soil`.
+- No database: the dashboard only keeps the current session's data.
+- No external APIs (no OpenWeather).
+- Protocols: HTTP and MQTT. Language: Python. Dashboard: Dash.
+- Algorithms: VPD (Vapor Pressure Deficit) + redundant fusion of the soil sensors (weighted average / Kalman).
+- The examples **complete the dashboard**: panels start red and turn green as each exercise is completed.
+- Automatic exercise validator: not required (optional, see `TASKS.md`).
 
 
-## Struttura del repo
+## Repo layout
 
 ```
-docker-compose.yml        orchestrazione (broker, sensori, attuatore, central, dashboard)
+docker-compose.yml        orchestration (broker, sensors, actuator, central, dashboard)
 docs/
-  architecture.md         dettagli e contratti (endpoint, topic, payload)
+  architecture.md         details and contracts (endpoints, topics, payloads)
 services/
-  temperature/            sensori temperatura (HTTP)
-  humidity/               sensori umidità aria (HTTP)
-  soil/                   sensori umidità suolo (MQTT)
-  sprinkler/              attuatore (MQTT subscribe)
-  central/                nodo centrale: pull + subscribe + fusione + decisione
+  temperature/            temperature sensors (HTTP)
+  humidity/               air-humidity sensors (HTTP)
+  soil/                   soil-moisture sensors (MQTT)
+  sprinkler/              actuator (MQTT subscribe)
+  central/                central node: pull + subscribe + fusion + decision
   dashboard/              Dash
-TASKS.md                  backlog suddiviso per area
+TASKS.md                  backlog split by area
 ```
 
-## Come lavorare
+## How to work
 
-Leggere `docs/architecture.md`: i contratti sono la base per lavorare in parallelo --> scegliere task da `TASKS.md` e aprire un branch `featureX/`.
+Read `docs/architecture.md`: the contracts are what lets us work in parallel --> pick a task from `TASKS.md` and open a branch `featureX/`.

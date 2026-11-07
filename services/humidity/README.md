@@ -1,7 +1,7 @@
 # services/humidity
 
-Container sensore **umidità dell'aria**. Simula 3 sensori (uno per zona), espone HTTP su porta 5002 (**pull**).
+**Air-humidity** sensor container. Simulates 3 sensors (one per zone), serves HTTP on port 5002 (**pull**).
 
-Contratto: `GET /zones/<zone>/humidity`, `GET /health`, `POST /debug/fault` (vedi `docs/architecture.md`).
+Contract: `GET /zones/<zone>/humidity`, `GET /health`, `POST /debug/fault` (see `docs/architecture.md`).
 
-Nota: umidità relativa correlata (inversamente) alla temperatura, così il VPD risulta realistico.
+Note: relative humidity is inversely correlated with temperature, so the VPD looks realistic.

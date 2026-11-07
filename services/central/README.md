@@ -1,13 +1,13 @@
 # services/central
 
-Nodo centrale (porta 5000).
+Central node (port 5000).
 
-Moduli previsti:
-- `pull.py` polling HTTP di temperature/humidity. **ESERCIZIO 1** (gestione errori, richieste inutili).
-- `subscribe.py` client MQTT, `on_message` per `field/+/soil/+`. **ESERCIZIO 2**.
-- `fusion.py` livello 0, fusione ridondante suolo (media pesata/Kalman), scarto outlier, VPD.
-- `decision.py` `decide_irrigation(zone_state)`. **ESERCIZIO 3 / 4** (con TODO).
-- `api.py` `GET /state` (stato in memoria per la dashboard, inclusi flag esercizi).
-- `main.py` avvio dei thread.
+Planned modules:
+- `pull.py` — HTTP polling of temperature/humidity. **EXERCISE 1** (error handling, useless requests).
+- `subscribe.py` — MQTT client, `on_message` for `field/+/soil/+`. **EXERCISE 2**.
+- `fusion.py` — level 0, redundant soil fusion (weighted average/Kalman), outlier rejection, VPD.
+- `decision.py` — `decide_irrigation(zone_state)`. **EXERCISE 3 / 4** (with TODOs).
+- `api.py` — `GET /state` (in-memory state for the dashboard, including exercise flags).
+- `main.py` — starts the threads.
 
-Nessun database: tutto in memoria.
+No database: everything lives in memory.

@@ -29,16 +29,19 @@ Come T1.2 ma con umidità anticorrelata alla temperatura per risultare realistic
 **Done**: idem T1.2; valori in range 0–100.
 
 ### T1.4 Servizio `soil` (MQTT push) **[P]** — Dip. T1.1, T2.1
+> **Prima versione fatta** (`services/soil`, testata con `tests/smoke_mqtt.py`). Resta da fare: estrarre il simulatore in un modulo condiviso con T1.1 e provarlo con Docker/Mosquitto reali.
 9 sensori (3 per zona), pubblicazione periodica su `field/<z>/soil/<id>`; il suolo si asciuga nel tempo con tasso per zona; sottoscrive stato sprinkler e risale quando è `on`; guasto via topic debug.
 **Done**: `mosquitto_sub` mostra 9 flussi; l'umidità reagisce allo sprinkler.
 
 ## Area INFRA — Broker, attuatore, orchestrazione
 
 ### T2.1 Broker Mosquitto e compose funzionante **[P]** — Dip. T0.1
+> **Parte MQTT fatta** (broker con healthcheck, soil, sprinkler, profilo `debug` con monitor). Resta: attivare i servizi `wip` quando esistono e verificare su macchina pulita (Linux/Mac/Windows).
 Verificare `docker-compose.yml`, rete, healthcheck, `depends_on`, porte; aggiungere `.env` d'esempio.
 **Done**: `docker compose up --build` parte da zero su macchina pulita (Linux/Mac/Windows).
 
 ### T2.2 Servizio `sprinkler` **[P]** — Dip. T0.1, T2.1
+> **Fatto** (`services/sprinkler`): QoS 1, stato retained, Last Will, auto-off, idempotenza, comandi non validi ignorati. Verificato con `tests/smoke_mqtt.py` e con `kill -9`.
 Sottoscrizione comandi QoS 1, stato **retained**, Last Will `offline`, spegnimento automatico dopo `duration_s`, gestione comando duplicato (idempotenza).
 **Done**: pubblicando un comando lo stato cambia e un nuovo subscriber riceve l'ultimo stato retained; killando il container compare `offline`.
 
