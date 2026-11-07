@@ -20,6 +20,8 @@ Hands-on lab (≈60 min of examples + exercises) on service-oriented IoT monitor
 docker-compose.yml        orchestration (broker, sensors, actuator, central, dashboard)
 docs/
   architecture.md         details and contracts (endpoints, topics, payloads)
+  cheatsheet.md           usefull commands for testing
+  exercises.md            proposed exercise
 services/
   temperature/            temperature sensors (HTTP)
   humidity/               air-humidity sensors (HTTP)

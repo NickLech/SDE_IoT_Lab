@@ -15,7 +15,7 @@ The field has **3 zones** (`zone1`, `zone2`, `zone3`). Each zone has:
 | `soil` | simulates 9 sensors (3 per zone) | publishes on MQTT |
 | `sprinkler` | actuator, 3 valves | subscribes to commands, publishes state (MQTT) |
 | `central` | pull + subscribe, fusion, decision | HTTP client, MQTT client |
-| `dashboard` | shows data and exercise status | reads from `central` |
+| `dashboard` | shows data and exercise status | reads from `central`; for now it builds the field view and an MQTT log straight from the broker |
 
 > Dashboard ↔ central: `central` exposes a small HTTP API (`GET /state`) with the current in-memory state (no DB). To be confirmed in the tasks.
 
@@ -34,6 +34,8 @@ The field has **3 zones** (`zone1`, `zone2`, `zone3`). Each zone has:
 ```
 
 Errors: `404` unknown zone. Stopped container → connection error on the client (to handle in exercise 1).
+
+Injected fault (demo only): `POST /debug/fault` with `{"sensor_id":"hum-zone1","mode":"crazy|stuck|drift|none"}` → `200` (`400` bad mode, `404` unknown sensor). Same modes as the MQTT debug topic below.
 
 ## MQTT contracts (push)
 

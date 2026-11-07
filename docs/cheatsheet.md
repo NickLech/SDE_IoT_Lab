@@ -17,7 +17,7 @@ docker compose down                # stop everything
 ```
 
 ## Addresses
-- Dashboard: http://localhost:8050
+- Dashboard (field view + MQTT log): http://localhost:8050 — try the sprinkler command below and watch zone 1
 - Central API: http://localhost:5000/state
 - Temperature: http://localhost:5001/zones/zone1/temperature
 - Humidity: http://localhost:5002/zones/zone1/humidity
@@ -46,7 +46,10 @@ python tests/smoke_mqtt.py
 
 ## Trying HTTP and MQTT by hand
 ```bash
-curl http://localhost:5001/zones/zone1/temperature
+curl http://localhost:5002/zones/zone1/humidity
+curl -X POST http://localhost:5002/debug/fault -H "Content-Type: application/json" -d '{"sensor_id":"hum-zone1","mode":"crazy"}'
+python tests/smoke_humidity.py                  # automatic check of the humidity service
+curl http://localhost:5001/zones/zone1/temperature   # once the temperature service exists
 mosquitto_sub -h localhost -t 'field/+/soil/+' -v
 ```
 

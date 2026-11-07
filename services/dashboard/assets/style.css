@@ -1,0 +1,123 @@
+/* Dashboard styles. Colours are tokens; the sprinkler animation is driven by the
+   .sp-on / .sp-off / .sp-offline / .sp-unknown class on each .zone card. */
+:root {
+  --bg: #f1f4f8;  --card: #ffffff;  --text: #1b2430;  --muted: #6a7686;  --line: #e1e6ec;
+  --water: #3a96e6;  --on: #1f87e0;  --ok: #2ea86a;  --warn: #e0a31f;  --bad: #d64545;  --idle: #aab3bf;
+  --soil-top: #e7d2ae;  --soil-bottom: #c4a173;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+
+/* ---- page grid: header / zones / (overview | log in the bottom-right corner) ---- */
+.page { display: grid; gap: 16px; padding: 16px; min-height: 100vh;
+        grid-template-columns: 1fr minmax(380px, 36vw);
+        grid-template-rows: auto auto auto; }
+.header { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; }
+.header h1 { margin: 0; font-size: 20px; }
+.zones { grid-column: 1 / -1; display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); }
+.overview { grid-column: 1; grid-row: 3; align-self: start; }
+.logpanel { grid-column: 2; grid-row: 3; display: flex; flex-direction: column; height: 280px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
+
+.pill { font-size: 12px; padding: 3px 10px; border-radius: 999px; color: #fff; }
+.pill.on { background: var(--ok); }
+.pill.off { background: var(--bad); }
+
+/* ---- zone card ---- */
+.zone { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
+.zone-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.zone-title { font-weight: 600; }
+.sp-badge { font-size: 12px; padding: 3px 10px; border-radius: 999px; background: #e8ecf1; color: var(--muted); }
+.sp-on .sp-badge { background: var(--on); color: #fff; animation: glow 1.6s ease-in-out infinite; }
+.sp-offline .sp-badge { background: var(--bad); color: #fff; }
+
+/* tile: soil, a water level that rises with the median moisture, the sprinkler on top */
+.tile { position: relative; height: 190px; border-radius: 10px; overflow: hidden;
+        background: linear-gradient(var(--soil-top), var(--soil-bottom)); }
+.fill { position: absolute; left: 0; right: 0; bottom: 0; height: 0; transition: height 1s ease;
+        background: linear-gradient(rgba(58, 150, 230, .55), rgba(28, 92, 176, .78)); }
+.fill::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 3px; background: rgba(255, 255, 255, .55); }
+.sp-on .fill { background-image: linear-gradient(rgba(58, 150, 230, .55), rgba(28, 92, 176, .78)),
+                                  repeating-linear-gradient(100deg, rgba(255, 255, 255, .18) 0 14px, transparent 14px 34px);
+               background-size: 100% 100%, 68px 100%; animation: shimmer 2.2s linear infinite; }
+.readout { position: absolute; left: 0; right: 0; bottom: 12px; text-align: center; color: #fff; text-shadow: 0 1px 4px rgba(0, 0, 0, .45); }
+.big { font-size: 34px; font-weight: 700; line-height: 1; }
+.note { font-size: 11px; opacity: .9; margin-top: 4px; }
+
+/* sprinkler: riser + head + water drops flying in arcs (only while ON) */
+.sprinkler { position: absolute; left: 50%; top: 10px; width: 0; transition: opacity .3s, filter .3s; }
+.riser { position: absolute; left: -3px; top: 17px; width: 6px; height: 14px; background: #5d6b7a; border-radius: 0 0 3px 3px; }
+.head { position: absolute; left: -12px; top: 0; width: 24px; height: 24px; border-radius: 50%; background: #7d8a99; border: 3px solid #4d5967; }
+.sp-on .head { background: var(--on); border-color: #1566b0; }
+.riser { left: -4px; top: 22px; width: 8px; height: 16px; }
+.spray { opacity: 0; transition: opacity .3s; }
+.sp-on .spray { opacity: 1; }
+.jet { position: absolute; left: 0; top: 10px; animation: arc-x 1.1s linear infinite; animation-delay: var(--delay); animation-play-state: paused; }
+.drop { width: 8px; height: 11px; margin-left: -4px; opacity: 0;
+        background: radial-gradient(circle at 35% 30%, #fff 0 14%, #52b2ff 45%, #1b6fc9 100%);
+        box-shadow: 0 0 3px rgba(20, 90, 180, .55);
+        border-radius: 50% 50% 50% 50% / 62% 62% 38% 38%;
+        animation: arc-y 1.1s infinite; animation-delay: var(--delay); animation-play-state: paused; }
+.sp-on .jet, .sp-on .drop { animation-play-state: running; }
+.sp-off .head { opacity: .85; }
+.sp-offline .sprinkler { filter: grayscale(1); opacity: .45; }
+.sp-unknown .sprinkler { opacity: .5; }
+
+/* ---- sensors ---- */
+.sensors { margin-top: 10px; display: grid; gap: 6px; }
+.srow { display: grid; grid-template-columns: 12px 96px 1fr 68px 62px; align-items: center; gap: 8px; font-size: 12px; }
+.sname { font-family: ui-monospace, Menlo, Consolas, monospace; color: var(--muted); }
+.bar { height: 6px; background: #e8ecf1; border-radius: 3px; overflow: hidden; }
+.bar-fill { height: 100%; background: var(--water); border-radius: 3px; transition: width .6s ease; }
+.sval { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
+.sage { color: var(--muted); font-size: 11px; }
+.srow.offline .bar-fill { background: var(--idle); }
+.srow.offline .sval, .srow.offline .sname { color: var(--bad); }
+.srow.suspect .bar-fill { background: var(--bad); }
+.srow.suspect .sval { color: var(--bad); }
+.srow.suspect .sval::before { content: "⚠ "; }
+
+.dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--idle); }
+.srow.online .dot, .dot.online { background: var(--ok); }
+.srow.offline .dot, .dot.offline { background: var(--bad); }
+
+/* ---- overview ---- */
+.stats { display: flex; gap: 28px; flex-wrap: wrap; }
+.stat-value { font-size: 26px; font-weight: 700; }
+.stat-value small { font-size: 12px; font-weight: 500; color: var(--warn); }
+.stat-label { font-size: 12px; color: var(--muted); }
+.legend { margin-top: 14px; display: flex; gap: 6px 18px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
+.legend .dot { margin-right: 6px; vertical-align: -1px; }
+.warn-mark { color: var(--bad); margin-right: 6px; }
+
+/* ---- log ---- */
+.log-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.log-title { font-weight: 600; font-size: 13px; }
+.log-toggle, .log-toggle * { font-size: 12px; color: var(--muted) !important; }
+#log { flex: 1; min-height: 0; margin: 0; overflow: auto; background: #111820; color: #d6dde6; padding: 10px;
+       border-radius: 8px; font-size: 11px; line-height: 1.45; white-space: pre; }
+
+/* ---- animations ---- */
+@keyframes arc-x { from { transform: translateX(0); } to { transform: translateX(var(--dx)); } }
+@keyframes arc-y {
+  0%   { transform: translateY(0);               opacity: 0; animation-timing-function: ease-out; }
+  8%   { opacity: 1; }
+  35%  { transform: translateY(var(--lift));     animation-timing-function: ease-in; }
+  90%  { opacity: 1; }
+  100% { transform: translateY(var(--fall));     opacity: 0; }
+}
+@keyframes shimmer { to { background-position: 0 0, 68px 0; } }
+@keyframes glow { 0%, 100% { box-shadow: 0 0 0 0 rgba(31, 135, 224, .45); } 50% { box-shadow: 0 0 0 6px rgba(31, 135, 224, 0); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .jet, .drop, .sp-badge, .fill { animation: none !important; }
+  .spray { display: none; }
+}
+
+/* narrow screens: single column, log last */
+@media (max-width: 900px) {
+  .page { grid-template-columns: 1fr; grid-template-rows: auto; }
+  .overview, .logpanel { grid-column: 1; grid-row: auto; }
+  #log { height: 260px; flex: none; }
+}

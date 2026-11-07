@@ -1,9 +1,3 @@
-# MQTT part (working): broker + soil (push) + sprinkler (actuator).
-#   docker compose up --build
-# Services not implemented yet (HTTP pull, central, dashboard) use the "wip" profile:
-#   docker compose --profile wip up --build
-# Remove their `profiles` line once they are ready.
-
 services:
   broker:
     image: eclipse-mosquitto:2
@@ -55,6 +49,33 @@ services:
       broker:
         condition: service_healthy
 
+  # HTTP sensor (pull): http://localhost:5002/zones/zone1/humidity
+  humidity:
+    build: ./services/humidity
+    environment:
+      ZONES: "zone1,zone2,zone3"
+      NOISE_STD: "1.5"
+      SPIKE_PROB: "0.02"
+      DAY_PERIOD_S: "600"   # keep equal to the temperature service
+    ports:
+      - "5002:5002"
+    restart: unless-stopped
+
+  # Field view + MQTT log: http://localhost:8050
+  dashboard:
+    build: ./services/dashboard
+    environment:
+      MQTT_HOST: broker
+      ZONES: "zone1,zone2,zone3"
+      SENSORS_PER_ZONE: "3"
+      LOG_TOPICS: "field/#,debug/#"
+    ports:
+      - "8050:8050"
+    depends_on:
+      broker:
+        condition: service_healthy
+    restart: unless-stopped
+
   # ---------------------------------------------------------------- to be implemented
   temperature:
     profiles: ["wip"]
@@ -64,15 +85,6 @@ services:
       SPIKE_PROB: "0.02"
     ports:
       - "5001:5001"
-
-  humidity:
-    profiles: ["wip"]
-    build: ./services/humidity
-    environment:
-      NOISE_STD: "1.5"
-      SPIKE_PROB: "0.02"
-    ports:
-      - "5002:5002"
 
   central:
     profiles: ["wip"]
@@ -91,13 +103,3 @@ services:
         condition: service_started
       humidity:
         condition: service_started
-
-  dashboard:
-    profiles: ["wip"]
-    build: ./services/dashboard
-    environment:
-      CENTRAL_URL: http://central:5000
-    ports:
-      - "8050:8050"
-    depends_on:
-      - central
