@@ -1,16 +1,17 @@
-"""Soil service (simple version): 9 soil-moisture sensors pushing readings over MQTT.
+"""Soil service (simple): 9 soil-moisture sensors, one MQTT client, one loop.
 
-- Topic: field/<zone>/soil/<sensor_id>   (QoS 0)
+- Publishes on field/<zone>/soil/<sensor_id>  (QoS 0)
   {"zone", "sensor_id", "value", "unit": "%", "timestamp"}
-- Status (retained, LWT): field/<zone>/soil/<sensor_id>/status  -> "online" / "offline"
-- Each zone has a simple moisture model: it dries at a constant rate and
-  gets wetter while the zone's sprinkler is on.
+- Subscribes to field/+/sprinkler/state and field/+/rain/state  ({"state": "on"|"off"})
+- Every sensor starts with a random value in [INITIAL_MIN, INITIAL_MAX].
+- Every TICK_S seconds each sensor loses a random value in [DRY_MIN, DRY_MAX]
+  and gains WET_STEP for each active source of its zone (sprinkler, rain).
 """
 import json
 import os
+import random
 import signal
 import threading
-import time
 from datetime import datetime, timezone
 
 import paho.mqtt.client as mqtt
@@ -19,105 +20,71 @@ MQTT_HOST = os.environ.get("MQTT_HOST", "localhost")
 MQTT_PORT = int(os.environ.get("MQTT_PORT", 1883))
 ZONES = ["zone1", "zone2", "zone3"]
 SENSORS_PER_ZONE = 3
-PUBLISH_INTERVAL_S = 2
+SOURCES = ["sprinkler", "rain"]
 
-INITIAL_MOISTURE = 50.0  # %
-DRY_RATE = 3.0           # %/min
-IRRIGATION_GAIN = 12.0   # %/min while the sprinkler is on
-SATURATION = 80.0        # %
+TICK_S = 5
+INITIAL_MIN = 45.0  # % initial value, random per sensor
+INITIAL_MAX = 55.0
+DRY_MIN = 1.0       # % lost every tick, random per sensor
+DRY_MAX = 3.0
+WET_STEP = 10.0      # % gained every tick for each active source
+MIN_MOISTURE = 30.0
+MAX_MOISTURE = 85.0
 
 
 def now_iso():
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def new_client(client_id):
-    return mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=client_id)
+class SoilService:
+    def __init__(self):
+        # sensor_id -> zone, and sensor_id -> current moisture
+        self.zone_of = {
+            f"soil-{z}-{i}": z for z in ZONES for i in range(1, SENSORS_PER_ZONE + 1)
+        }
+        self.moisture = {s: random.uniform(INITIAL_MIN, INITIAL_MAX) for s in self.zone_of}
+        self.wet = {z: {s: False for s in SOURCES} for z in ZONES}
 
-
-class Environment(threading.Thread):
-    """Holds the moisture of each zone and updates it every second."""
-
-    def __init__(self, stop):
-        super().__init__(daemon=True)
-        self.stop = stop
-        self.moisture = {z: INITIAL_MOISTURE for z in ZONES}
-        self.irrigating = {z: False for z in ZONES}
-
-        self.client = new_client("soil-environment")
+        self.client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id="soil-service")
         self.client.on_connect = self.on_connect
         self.client.on_message = self.on_message
 
-    def start_mqtt(self):
-        self.client.connect_async(MQTT_HOST, MQTT_PORT)
-        self.client.loop_start()
-
     def on_connect(self, client, userdata, flags, reason_code, properties):
-        client.subscribe("field/+/sprinkler/state", qos=1)
+        client.subscribe([(f"field/+/{s}/state", 1) for s in SOURCES])
 
     def on_message(self, client, userdata, msg):
         try:
-            zone = msg.topic.split("/")[1]
+            _, zone, source, _ = msg.topic.split("/")
             state = json.loads(msg.payload).get("state")
-        except (ValueError, IndexError, AttributeError):
+        except (ValueError, AttributeError):
             return
-        if zone in self.irrigating:
-            self.irrigating[zone] = (state == "on")
+        if zone in self.wet and source in self.wet[zone]:
+            self.wet[zone][source] = (state == "on")
 
-    def run(self):
-        last = time.monotonic()
-        while not self.stop.wait(1.0):
-            now = time.monotonic()
-            dt_min = (now - last) / 60.0
-            last = now
-            for zone in ZONES:
-                delta = -DRY_RATE * dt_min
-                if self.irrigating[zone]:
-                    delta += IRRIGATION_GAIN * dt_min
-                self.moisture[zone] = min(SATURATION, max(0.0, self.moisture[zone] + delta))
+    def step(self):
+        for sensor_id, zone in self.zone_of.items():
+            delta = -random.uniform(DRY_MIN, DRY_MAX) + WET_STEP * sum(self.wet[zone].values())
+            value = self.moisture[sensor_id] + delta
+            self.moisture[sensor_id] = min(MAX_MOISTURE, max(MIN_MOISTURE, value))
 
-    def shutdown(self):
-        self.client.loop_stop()
-        self.client.disconnect()
+    def publish_readings(self):
+        for sensor_id, zone in self.zone_of.items():
+            payload = {
+                "zone": zone,
+                "sensor_id": sensor_id,
+                "value": round(self.moisture[sensor_id], 2),
+                "unit": "%",
+                "timestamp": now_iso(),
+            }
+            self.client.publish(f"field/{zone}/soil/{sensor_id}", json.dumps(payload), qos=0)
 
-
-class SoilSensor(threading.Thread):
-    def __init__(self, sensor_id, zone, env, stop):
-        super().__init__(daemon=True)
-        self.sensor_id = sensor_id
-        self.zone = zone
-        self.env = env
-        self.stop = stop
-        self.topic = f"field/{zone}/soil/{sensor_id}"
-        self.status_topic = f"{self.topic}/status"
-
-        self.client = new_client(sensor_id)
-        self.client.will_set(self.status_topic, "offline", qos=1, retain=True)
-        self.client.on_connect = self.on_connect
-
-    def start_mqtt(self):
+    def run(self, stop):
         self.client.connect_async(MQTT_HOST, MQTT_PORT)
         self.client.loop_start()
-
-    def on_connect(self, client, userdata, flags, reason_code, properties):
-        client.publish(self.status_topic, "online", qos=1, retain=True)
-
-    def run(self):
-        while not self.stop.is_set():
-            if self.client.is_connected():
-                payload = {
-                    "zone": self.zone,
-                    "sensor_id": self.sensor_id,
-                    "value": round(self.env.moisture[self.zone], 2),
-                    "unit": "%",
-                    "timestamp": now_iso(),
-                }
-                self.client.publish(self.topic, json.dumps(payload), qos=0)
-            self.stop.wait(PUBLISH_INTERVAL_S)
-
-    def shutdown(self):
-        if self.client.is_connected():
-            self.client.publish(self.status_topic, "offline", qos=1, retain=True).wait_for_publish(2)
+        print(f"soil started: {len(self.zone_of)} sensors on {ZONES}")
+        while not stop.wait(TICK_S):
+            self.step()
+            self.publish_readings()
         self.client.loop_stop()
         self.client.disconnect()
 
@@ -126,25 +93,7 @@ def main():
     stop = threading.Event()
     signal.signal(signal.SIGTERM, lambda *_: stop.set())
     signal.signal(signal.SIGINT, lambda *_: stop.set())
-
-    env = Environment(stop)
-    sensors = [
-        SoilSensor(f"soil-{zone}-{i}", zone, env, stop)
-        for zone in ZONES
-        for i in range(1, SENSORS_PER_ZONE + 1)
-    ]
-    print(f"soil started: {len(sensors)} sensors on {ZONES}")
-
-    env.start_mqtt()
-    env.start()
-    for s in sensors:
-        s.start_mqtt()
-        s.start()
-
-    stop.wait()
-    for s in sensors:
-        s.shutdown()
-    env.shutdown()
+    SoilService().run(stop)
 
 
 if __name__ == "__main__":
