@@ -5,16 +5,20 @@ Everything is built from the MQTT messages seen since startup (no DB, no `centra
   field/<zone>/soil/<sensor_id>/status   Last Will   -> online / offline
   field/<zone>/sprinkler/state           retained    -> sprinkler on / off / offline
   field/<zone>/sprinkler/cmd             commands    -> countdown while a sprinkler is on
+  GET <TEMPERATURE_URL>/zones/<zone>/temperature   (HTTP pull)  -> air temperature  } VPD per zone
+  GET <HUMIDITY_URL>/zones/<zone>/humidity         (HTTP pull)  -> air humidity     }
 
 Contracts: docs/architecture.md
 """
 import collections
 import json
 import logging
+import math
 import os
 import statistics
 import threading
 import time
+import urllib.request
 from datetime import datetime, timezone
 
 import paho.mqtt.client as mqtt
@@ -35,6 +39,16 @@ STALE_AFTER_S = float(os.environ.get("STALE_AFTER_S", 8))        # no reading fo
 SUSPECT_DELTA = float(os.environ.get("SUSPECT_DELTA", 15))       # distance from zone median (%) -> "suspect"
 SPRINKLER_DEFAULT_S = float(os.environ.get("SPRINKLER_DEFAULT_S", 30))   # keep equal to the sprinkler service
 SPRINKLER_MAX_S = float(os.environ.get("SPRINKLER_MAX_S", 300))          # idem
+# VPD (kPa). Bands are generic: tune them per crop / growth stage.
+VPD_LOW = float(os.environ.get("VPD_LOW", 0.4))                  # below -> too humid (fungal risk)
+VPD_HIGH = float(os.environ.get("VPD_HIGH", 1.2))                # above -> high
+VPD_STRESS = float(os.environ.get("VPD_STRESS", 1.6))            # above -> water stress
+TEMPERATURE_URL = os.environ.get("TEMPERATURE_URL", "http://localhost:5001").rstrip("/")
+HUMIDITY_URL = os.environ.get("HUMIDITY_URL", "http://localhost:5002").rstrip("/")
+POLL_S = float(os.environ.get("POLL_S", 2))                      # how often the temperature/humidity services are polled
+HTTP_TIMEOUT_S = float(os.environ.get("HTTP_TIMEOUT_S", 1.5))
+AIR_STALE_AFTER_S = float(os.environ.get("AIR_STALE_AFTER_S", 15))   # no temperature/humidity for this long -> no VPD
+LEAF_TEMP_OFFSET = float(os.environ.get("LEAF_TEMP_OFFSET", 0))  # leaf is this many degC colder than air (0 = air VPD)
 PORT = int(os.environ.get("PORT", 8050))
 
 SENSOR_IDS = {z: [f"soil-{z}-{i}" for i in range(1, SENSORS_PER_ZONE + 1)] for z in ZONES}
@@ -48,6 +62,8 @@ cmd_until = {}                              # zone -> expected end of the last "
 arrivals = collections.deque()              # arrival times of recent messages (msg/s tile)
 log_all = collections.deque(maxlen=MAX_MESSAGES)      # every logged message
 log_events = collections.deque(maxlen=MAX_MESSAGES)   # same without telemetry (commands, states, status)
+temp = {}                                   # zone -> (degC, received_at)   (HTTP pull)
+humid = {}                                  # zone -> (%RH, received_at)    (HTTP pull)
 connected = threading.Event()
 
 
@@ -101,6 +117,30 @@ def on_message(client, userdata, msg):
                 log_events.append(line)
 
 
+# ------------------------------------------------------------------- HTTP pull (air)
+def poll_loop():
+    """Polls the temperature and humidity services (plain HTTP, no MQTT) and stores the last value per zone."""
+    failing = set()
+    while True:
+        for zone in ZONES:
+            for name, store, base in (("temperature", temp, TEMPERATURE_URL), ("humidity", humid, HUMIDITY_URL)):
+                url = f"{base}/zones/{zone}/{name}"
+                try:
+                    with urllib.request.urlopen(url, timeout=HTTP_TIMEOUT_S) as resp:
+                        value = float(json.load(resp)["value"])
+                except Exception as exc:       # network, HTTP status, bad JSON...
+                    if url not in failing:
+                        failing.add(url)
+                        log.warning("cannot read %s: %s", url, exc)
+                    continue
+                if url in failing:
+                    failing.discard(url)
+                    log.info("%s reachable again", url)
+                with lock:
+                    store[zone] = (value, time.monotonic())
+        time.sleep(POLL_S)
+
+
 client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id="dashboard")
 client.on_connect = on_connect
 client.on_disconnect = on_disconnect
@@ -109,11 +149,33 @@ client.reconnect_delay_set(1, 10)
 
 
 # --------------------------------------------------------------------------- view model
+def svp_kpa(t_c):
+    """Saturation vapor pressure (kPa), Tetens/Magnus formula."""
+    return 0.6108 * math.exp(17.27 * t_c / (t_c + 237.3))
+
+
+def vpd_kpa(t_c, rh, leaf_offset=0.0):
+    """Vapor pressure deficit (kPa) = SVP(leaf) - actual vapor pressure of the air."""
+    return max(0.0, svp_kpa(t_c - leaf_offset) - svp_kpa(t_c) * rh / 100)
+
+
+def vpd_band(vpd):
+    if vpd < VPD_LOW:
+        return "low"
+    if vpd <= VPD_HIGH:
+        return "ok"
+    return "high" if vpd <= VPD_STRESS else "stress"
+
+
+VPD_TEXT = {"low": "too humid", "ok": "optimal", "high": "high", "stress": "water stress"}
+
+
 def snapshot():
     """Turns the shared state into what the UI shows."""
     now = time.monotonic()
     with lock:
         soil_c, status_c = dict(soil), dict(status)
+        temp_c, humid_c = dict(temp), dict(humid)
         sprinkler_c = {z: dict(v) for z, v in sprinkler.items()}
         while arrivals and now - arrivals[0] > 5:
             arrivals.popleft()
@@ -141,8 +203,14 @@ def snapshot():
 
         sp = sprinkler_c[zone]
         remaining = max(0, sp["until"] - now) if sp["state"] == "on" and sp["until"] else None
+        vpd = None
+        t_r, h_r = temp_c.get(zone), humid_c.get(zone)
+        if (t_r and h_r and now - min(t_r[1], h_r[1]) <= AIR_STALE_AFTER_S
+                and -40 <= t_r[0] <= 60 and 0 <= h_r[0] <= 100):
+            v = vpd_kpa(t_r[0], h_r[0], LEAF_TEMP_OFFSET)
+            vpd = {"temp": t_r[0], "rh": h_r[0], "kpa": v, "band": vpd_band(v)}
         zones[zone] = {"median": median, "n": len(valid), "sprinkler": sp["state"] or "unknown",
-                       "remaining": remaining}
+                       "remaining": remaining, "vpd": vpd}
     return zones, sensors, rate
 
 
@@ -192,6 +260,7 @@ def zone_card(zone):
                 html.Div(id={"type": "zone-note", "zone": zone}, className="note"),
             ]),
         ]),
+        html.Div(id={"type": "zone-vpd", "zone": zone}, className="vpd none", children="VPD –"),
         html.Div(className="sensors", children=rows),
     ])
 
@@ -246,6 +315,8 @@ app.layout = html.Div(className="page", children=[
     Output("ov-rate", "children"),
     Output("conn", "children"),
     Output("conn", "className"),
+    Output({"type": "zone-vpd", "zone": ALL}, "children"),
+    Output({"type": "zone-vpd", "zone": ALL}, "className"),
     Input("tick", "n_intervals"),
 )
 def refresh(_):
@@ -271,6 +342,12 @@ def refresh(_):
     offline = sum(i["sprinkler"] == "offline" for i in zones.values())
     is_up = connected.is_set()
 
+    def vpd_text(z):
+        v = zones[z]["vpd"]
+        if v is None:
+            return "VPD – (no air reading)"
+        return f"VPD {v['kpa']:.2f} kPa · {VPD_TEXT[v['band']]} · {v['temp']:.1f}°C · {v['rh']:.0f}% RH"
+
     return (
         [f"zone sp-{zones[z]['sprinkler'] if zones[z]['sprinkler'] in sp_text else 'unknown'}" for z in zone_ids],
         ["–" if pct(z) is None else f"{pct(z):.0f}%" for z in zone_ids],
@@ -287,6 +364,8 @@ def refresh(_):
         f"{rate:.1f}",
         f"{'connected' if is_up else 'DISCONNECTED'} · {MQTT_HOST}:{MQTT_PORT}",
         "pill on" if is_up else "pill off",
+        [vpd_text(z) for z in zone_ids],
+        ["vpd " + (zones[z]["vpd"]["band"] if zones[z]["vpd"] else "none") for z in zone_ids],
     )
 
 
@@ -301,6 +380,7 @@ def refresh_log(_, show):
 if __name__ == "__main__":
     logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"),
                         format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    threading.Thread(target=poll_loop, daemon=True).start()
     client.connect_async(MQTT_HOST, MQTT_PORT, keepalive=30)
     client.loop_start()
     log.info("serving on port %d", PORT)

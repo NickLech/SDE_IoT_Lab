@@ -71,6 +71,8 @@ services:
       ZONES: "zone1,zone2,zone3"
       SENSORS_PER_ZONE: "3"
       LOG_TOPICS: "field/#,debug/#"
+      TEMPERATURE_URL: http://temperature:5001
+      HUMIDITY_URL: http://humidity:5002
     ports:
       - "8050:8050"
     depends_on:
@@ -80,7 +82,7 @@ services:
 
   # ---------------------------------------------------------------- to be implemented
   temperature:
-    profiles: ["wip"]
+    #profiles: ["wip"]
     build: ./services/temperature
     environment:
       NOISE_STD: "0.4"
