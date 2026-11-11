@@ -36,7 +36,8 @@ services:
     build: ./services/rain
     environment:
       MQTT_HOST: broker
-      RAIN_EVERY_S: "60"
+      RAIN_MIN_S: "120"
+      RAIN_MAX_S: "300"
       RAIN_DURATION_S: "30"
     depends_on:
       broker:
@@ -71,35 +72,45 @@ services:
       ZONES: "zone1,zone2,zone3"
       SENSORS_PER_ZONE: "3"
       LOG_TOPICS: "field/#,debug/#"
-      TEMPERATURE_URL: http://temperature:5001
-      HUMIDITY_URL: http://humidity:5002
+      CENTRAL_URL: http://central:5000      # all the data (soil, VPD, decisions) comes from central
     ports:
       - "8050:8050"
     depends_on:
       broker:
         condition: service_healthy
+      central:
+        condition: service_healthy
     restart: unless-stopped
 
-  # ---------------------------------------------------------------- to be implemented
+  # Temperature sensors (HTTP, polled by central)
   temperature:
-    #profiles: ["wip"]
     build: ./services/temperature
     environment:
       NOISE_STD: "0.4"
       SPIKE_PROB: "0.02"
     ports:
       - "5001:5001"
+    restart: unless-stopped
 
+  # Central node: soil fusion + air (HTTP pull) -> VPD -> irrigation decision; serves GET /zones to the dashboard
   central:
-    profiles: ["wip"]
     build: ./services/central
     environment:
       MQTT_HOST: broker
+      ZONES: "zone1,zone2,zone3"
+      SENSORS_PER_ZONE: "3"
       TEMPERATURE_URL: http://temperature:5001
       HUMIDITY_URL: http://humidity:5002
       POLL_INTERVAL_S: "5"
     ports:
       - "5000:5000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health', timeout=2)"]
+      interval: 10s
+      start_period: 10s
+      start_interval: 2s
+      timeout: 3s
+      retries: 3
     depends_on:
       broker:
         condition: service_healthy
@@ -107,3 +118,4 @@ services:
         condition: service_started
       humidity:
         condition: service_started
+    restart: unless-stopped
