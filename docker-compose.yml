@@ -103,7 +103,7 @@ services:
       HUMIDITY_URL: http://humidity:5002
       POLL_INTERVAL_S: "5"
     ports:
-      - "5000:5000"
+      - "5100:5000"      # host 5100 -> container 5000 (macOS AirPlay already owns host 5000)
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health', timeout=2)"]
       interval: 10s

@@ -18,7 +18,7 @@ docker compose down                # stop everything
 
 ## Addresses
 - Dashboard (field view + MQTT log): http://localhost:8050 — try the sprinkler command below and watch zone 1
-- Central API: http://localhost:5000/state
+- Central API: http://localhost:5100/state
 - Temperature: http://localhost:5001/zones/zone1/temperature
 - Humidity: http://localhost:5002/zones/zone1/humidity
 - MQTT broker: localhost:1883

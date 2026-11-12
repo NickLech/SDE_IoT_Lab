@@ -1,6 +1,6 @@
 # services/central
 
-Central node (port 5000).
+Central node (container port 5000, published on the host as 5100).
 
 Planned modules:
 - `pull.py` — HTTP polling of temperature/humidity. **EXERCISE 1** (error handling, useless requests).
