@@ -32,12 +32,14 @@ except ImportError:
 
 # Global radius: core.RADIUS is the token every surface uses; this theme fixes
 # what that token renders to (change it to retune all corners at once).
+controls, model = toolbar()
 app.layout = dmc.MantineProvider(theme={"radius": {"xl": "1rem"}}, children=[
     dmc.AppShell(header={"height": 72}, padding="md", children=[
         dmc.AppShellHeader(header()),
         dmc.AppShellMain(dmc.Container(size="xl", children=dmc.Stack(gap="md", children=[
-            toolbar(),
+            controls,
             dmc.SimpleGrid(cols={"base": 1, "md": 2, "xl": 3}, children=[zone_card(z) for z in core.ZONES]),
+            model,
             about(),
         ]))),
     ]),
