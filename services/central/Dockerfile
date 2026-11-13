@@ -8,6 +8,7 @@ COPY requirements.txt .
 RUN pip install -r requirements.txt
 
 COPY app.py .
+COPY components/ ./components/
 RUN useradd --system --no-create-home sensor
 USER sensor
 

@@ -4,7 +4,7 @@ from datetime import datetime
 
 from core import SENSOR_IDS, history, lock
 
-VPD_TEXT = {"low": "too humid", "ok": "optimal", "high": "high", "stress": "water stress"}
+VPD_TEXT = {"low": "too humid", "ok": "ok", "optimal": "optimal", "stress": "too dry"}
 
 
 # ---- text ------------------------------------------------------------------

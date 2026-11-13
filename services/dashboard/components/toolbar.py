@@ -48,7 +48,7 @@ def _model_paper():
                       "How far the air is from saturation (Relative Humidity in %). When the VPD is high, plants lose more water."),
                 _step(3, "Irrigation threshold",
                       r"\displaystyle \theta=35+15\,(\mathrm{VPD}-0.8)\;[\%]",
-                      "Irrigate when soil moisture falls below θ. θ is 35 % in average air (VPD 0.8 kPa), and increases with VPD to avoid plant stress."),
+                      "Irrigate when soil moisture falls below θ. θ is 35 % at the reference VPD of 0.8 kPa (the lower edge of the optimal band), and rises with VPD to irrigate earlier in drier air."),
             ]),
         ]))
 

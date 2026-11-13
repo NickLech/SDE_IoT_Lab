@@ -1,13 +1,22 @@
 # services/central
 
-Central node (container port 5000, published on the host as 5100).
+Central node: collects soil readings over MQTT and air temperature/humidity over HTTP, fuses the data, decides irrigation commands, and serves the dashboard API.
 
-Planned modules:
-- `pull.py` — HTTP polling of temperature/humidity. **EXERCISE 1** (error handling, useless requests).
-- `subscribe.py` — MQTT client, `on_message` for `field/+/soil/+`. **EXERCISE 2**.
-- `fusion.py` — level 0, redundant soil fusion (weighted average/Kalman), outlier rejection, VPD.
-- `decision.py` — `decide_irrigation(zone_state)`. **EXERCISE 3 / 4** (with TODOs).
-- `api.py` — `GET /state` (in-memory state for the dashboard, including exercise flags).
-- `main.py` — starts the threads.
+The Compose build context is `services/central`. The Dockerfile copies `app.py` to `/app` and the `components` package to `/app/components`; the container starts with `python app.py`.
 
-No database: everything lives in memory.
+Modules:
+- `app.py` — starts polling, MQTT, the control loop, and the HTTP API.
+- `components/comms.py` — MQTT and HTTP communication.
+- `components/state.py` — shared in-memory state.
+- `components/fusion.py` — soil/air fusion and VPD calculations.
+- `components/decision.py` — irrigation decision logic.
+- `components/control.py` — control loop and published API view.
+- `components/api.py` — HTTP endpoints.
+- `components/config.py` — environment-based configuration.
+
+HTTP endpoints on container port 5000:
+- `GET /health`
+- `GET /zones`
+- `GET /zones/<zone>`
+
+Compose publishes the API on host port 5100. No database is used; state lives in memory.
