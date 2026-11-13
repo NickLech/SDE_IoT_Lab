@@ -45,6 +45,10 @@ app.layout = dmc.MantineProvider(theme={"radius": {"xl": "1rem"}}, children=[
     ]),
     log_drawer(),
     zone_modal(),
+    dmc.Space(h="xl"),
+    dmc.Space(h="xl"),
+    dmc.Space(h="xl"),
+    dmc.Space(h="xl"),
     # Transparent full-screen catch layer: clicking it closes the popup panels
     # above. It sits UNDER both (z-index 900 vs their 1000), so the status
     # pill's popover and the log drawer stay clickable while the rest of the

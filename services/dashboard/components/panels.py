@@ -33,7 +33,7 @@ def log_drawer():
 
 
 def assignment():
-    return dmc.Accordion(variant="contained", radius=RADIUS, children=
+    return dmc.Accordion(variant="contained", radius=RADIUS, className="lift", children=
         dmc.AccordionItem(value="fusion", children=[
             dmc.AccordionControl(dmc.Text("Assignment", fw=600, size="sm")),
             dmc.AccordionPanel(),

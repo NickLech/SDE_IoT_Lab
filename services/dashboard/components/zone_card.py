@@ -1,5 +1,6 @@
 import dash_mantine_components as dmc
 from dash import html
+from dash_iconify import DashIconify
 
 from core import RADIUS, lock, water_s
 from viewmodel import air_text, chart_series, command_text, spread_text, vpd_text
@@ -28,32 +29,30 @@ def zone_facts(zone, info):
 
 
 def zone_hero(info):
-    """Big readout: fused soil moisture + distance from the irrigation threshold."""
+    """Two compact dot-badges: soil moisture + signed distance to threshold."""
     median = (info.get("soil") or {}).get("median")
     thr = (info.get("decision") or {}).get("soil_threshold")
+
     if median is None:
-        return [dmc.Stack(gap=0, children=[
-            dmc.Text("–", fz="2.5rem", fw=700, lh=1),
-            dmc.Text("median soil moisture", size="xs", c="dimmed"),
-        ])]
+        return [dmc.Badge("avg. soil moisture", color="gray", variant="light", size="md")]
+
+    moisture = dmc.Badge(
+        dmc.Group(gap=6, wrap="nowrap", align="center", children=[
+            dmc.Text(f"{median:.0f}%", size="md", fw=700),
+            dmc.Text("avg. soil moisture", size="xs", c="dimmed"),
+        ]),
+        color="blue", variant="light", size="lg",
+    )
 
     if thr is None:
-        delta = dmc.Badge("no threshold", color="gray", variant="light")
-    elif median >= thr:
-        delta = dmc.Badge(f"{median - thr:.0f} pts above threshold", color="green", variant="light")
+        delta = dmc.Badge("no threshold", color="gray", variant="dot", size="md")
     else:
-        delta = dmc.Badge(f"{thr - median:.0f} pts below threshold", color="orange", variant="light")
+        gap = median - thr
+        delta = dmc.Badge(f"{gap:+.0f} % from θ",
+                          color="green" if gap >= 0 else "orange",
+                          variant="dot", size="md")
 
-    return [
-        dmc.Stack(gap=4, children=[
-            dmc.Group(gap=2, align="baseline", children=[
-                dmc.Text(f"{median:.0f}", fz="2.5rem", fw=700, lh=1),
-                dmc.Text("%", size="lg", c="dimmed", fw=600),
-            ]),
-            dmc.Text("median soil moisture", size="xs", c="dimmed"),
-        ]),
-        delta,
-    ]
+    return [moisture, delta]
 
 
 def zone_chart(id_, zone, height):
@@ -70,24 +69,30 @@ def zone_card(zone):
         className="zone", withBorder=True, radius=RADIUS, shadow="sm", p="md",
         children=[
             html.Div(className="rain-layer"),
-            dmc.Stack(gap="sm", children=[
+            dmc.Stack(gap="xs", children=[
                 dmc.Group(justify="space-between", wrap="nowrap", children=[
-                    dmc.Text(zone.replace("zone", "Zone "), fw=600),
+                    dmc.Text(zone.replace("zone", "Zone #"), fw=700, size="lg"),
                     dmc.Group(gap="xs", wrap="nowrap", children=[
-                        dmc.Badge("rain –", id={"type": "zone-rain", "zone": zone},
-                                  color="gray", variant="light"),
-                        dmc.Badge("sprinkler –", id={"type": "zone-sprinkler", "zone": zone},
-                                  color="gray", variant="light"),
-                        dmc.Tooltip(label="Fullscreen", children=dmc.ActionIcon(
-                            "⛶", id={"type": "zone-expand", "zone": zone},
-                            variant="subtle", color="gray", size="sm")),
+                        dmc.Badge(dmc.Group(gap=4, wrap="nowrap", children=[
+                            dmc.Text("SPRINKLER", size="xs", fw=600),
+                        ]),
+                            id={"type": "zone-sprinkler", "zone": zone},
+                            color="gray", variant="dot", size="lg"
+                        ),
+                        dmc.Tooltip(label="Fullscreen", children=
+                            dmc.ActionIcon(
+                                DashIconify(icon="tabler:arrows-maximize", width=16),
+                                id={"type": "zone-expand", "zone": zone},
+                                variant="default", radius=RADIUS, size="md"
+                            )
+                        ),
                     ]),
                 ]),
-                dmc.Group(id={"type": "zone-hero", "zone": zone}, justify="space-between",
-                          align="flex-end", children=zone_hero({})),
+                dmc.Group(id={"type": "zone-hero", "zone": zone}, justify="space-between", align="flex-end", children=zone_hero({})),
+                dmc.Space(h="xs"),
                 zone_chart({"type": "zone-chart", "zone": zone}, zone, 190),
-                dmc.Alert("–", id={"type": "zone-decision", "zone": zone},
-                          color="gray", variant="light", p="xs"),
+                dmc.Space(h="xs"),
+                dmc.Alert("–", id={"type": "zone-decision", "zone": zone}, color="gray", variant="light", p="xs"),
                 dmc.SimpleGrid(id={"type": "zone-facts", "zone": zone}, cols=2,
                                spacing="xs", children=zone_facts(zone, {})),
             ]),

@@ -14,12 +14,9 @@ from viewmodel import chart_props, chart_series, decision_info, health_checks
 
 @callback(
     Output({"type": "zone-card", "zone": ALL}, "className"),
-    Output({"type": "zone-sprinkler", "zone": ALL}, "children"),
     Output({"type": "zone-sprinkler", "zone": ALL}, "color"),
     Output({"type": "zone-sprinkler", "zone": ALL}, "variant"),
     Output({"type": "zone-sprinkler", "zone": ALL}, "className"),
-    Output({"type": "zone-rain", "zone": ALL}, "children"),
-    Output({"type": "zone-rain", "zone": ALL}, "color"),
     Output({"type": "zone-hero", "zone": ALL}, "children"),
     Output({"type": "zone-chart", "zone": ALL}, "data"),
     Output({"type": "zone-chart", "zone": ALL}, "referenceLines"),
@@ -32,41 +29,33 @@ from viewmodel import chart_props, chart_series, decision_info, health_checks
     Input("tick", "n_intervals"),
 )
 def refresh(_):
-    zones, lag, central_up, rate, wall = core.snapshot()
+    zones, _, central_up, _, wall = core.snapshot()
     zone_ids = [o["id"]["zone"] for o in ctx.outputs_list[0]]
 
     def info(z):
         return zones.get(z) or {"zone": z}
 
-    keys = ("card", "sp_text", "sp_color", "sp_variant", "sp_class", "rain_text",
-            "rain_color", "hero", "data", "lines", "dec", "dec_color", "facts")
+    keys = ("card", "sp_color", "sp_variant", "sp_class",
+            "hero", "data", "lines", "dec", "dec_color", "facts")
     col = {k: [] for k in keys}
 
     for z in zone_ids:
         i = info(z)
         sp = (i.get("sprinkler") or {}).get("state")
-        remaining = (i.get("sprinkler") or {}).get("remaining_s")
         rain = i.get("rain")
 
         col["card"].append("zone" + (" raining" if rain == "on" else "")
                            + (" watering" if sp == "on" else ""))
 
         if sp == "on":
-            text = "sprinkler ON"
-            if remaining is not None:
-                text += f" · {max(0, remaining - lag):.0f}s left"
-            col["sp_text"].append(text)
             col["sp_color"].append("blue")
-            col["sp_variant"].append("filled")
+            col["sp_variant"].append("dot")
             col["sp_class"].append("sp-pulse")
         else:
-            col["sp_text"].append("sprinkler OFF" if sp == "off" else "sprinkler –")
             col["sp_color"].append("gray")
-            col["sp_variant"].append("light")
+            col["sp_variant"].append("dot")
             col["sp_class"].append("")
 
-        col["rain_text"].append(f"rain {rain if rain in ('on', 'off') else '–'}")
-        col["rain_color"].append("cyan" if rain == "on" else "gray")
         col["hero"].append(zone_hero(i))
 
         data, lines = chart_props(z)
@@ -89,8 +78,8 @@ def refresh(_):
         conn_text, conn_color = "LIVE", "green"
 
     return (
-        col["card"], col["sp_text"], col["sp_color"], col["sp_variant"], col["sp_class"],
-        col["rain_text"], col["rain_color"], col["hero"], col["data"], col["lines"],
+        col["card"], col["sp_color"], col["sp_variant"], col["sp_class"],
+        col["hero"], col["data"], col["lines"],
         col["dec"], col["dec_color"], col["facts"],
         conn_text, conn_color, status_rows(checks, last),
     )
