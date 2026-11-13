@@ -208,12 +208,14 @@ def clear_history(_):
 )
 def rain_override(mode):
     color = {"auto": "green", "dry": "orange", "rain": "cyan"}.get(mode, "gray")
-    if mode == "auto":
-        return color
-
-    state = "on" if mode == "rain" else "off"
     if core.connected.is_set():
-        payload = json.dumps({"state": state})
-        for z in core.ZONES:
-            core.client.publish(f"field/{z}/rain/state", payload, qos=1, retain=True)
+        # il servizio legge questo topic per sapere se deve comandare lui
+        core.client.publish("field/rain/mode", json.dumps({"mode": mode}),
+                            qos=1, retain=True)
+        if mode != "auto":
+            state = "on" if mode == "rain" else "off"
+            payload = json.dumps({"state": state})
+            for z in core.ZONES:
+                core.client.publish(f"field/{z}/rain/state", payload,
+                                    qos=1, retain=True)
     return color
