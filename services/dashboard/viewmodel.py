@@ -15,10 +15,10 @@ def air_text(info):
     if t is None and rh is None:
         return "missing"
     if t is None:
-        return f"{rh:.0f}% RH · temp missing"
+        return f"{rh:.0f}% RH, temp missing"
     if rh is None:
-        return f"{t:.1f}°C · humidity missing"
-    return f"{t:.1f}°C · {rh:.0f}% RH"
+        return f"{t:.1f}°C, humidity missing"
+    return f"{t:.1f}°C, {rh:.0f}% RH"
 
 
 def vpd_text(info):
@@ -26,7 +26,7 @@ def vpd_text(info):
     if not vpd or vpd.get("kpa") is None:
         return "– (no air reading)"
     band = vpd.get("band", "unknown")
-    return f"{vpd['kpa']:.2f} kPa · {VPD_TEXT.get(band, band)}"
+    return f"{vpd['kpa']:.2f} kPa ({VPD_TEXT.get(band, band)})"
 
 
 def command_text(info):
@@ -44,22 +44,30 @@ def spread_text(info):
     sensors = (info.get("sensors") or {}).values()
     vals = [s["value"] for s in sensors
             if s.get("state") == "online" and s.get("value") is not None]
-    text = f"±{(max(vals) - min(vals)) / 2:.1f} pts" if len(vals) > 1 else "–"
+    text = f"± {(max(vals) - min(vals)) / 2:.1f}%" if len(vals) > 1 else "–"
     suspects = sum(1 for s in sensors if s.get("suspect"))
-    return text + (f" · {suspects} suspect" if suspects else "")
+    return text + (f" ({suspects} suspect/s)" if suspects else " (no suspects)")
 
 
 def decision_info(info):
-    """Return (text, alert color) for the zone decision bar."""
+    """Return (status word, muted detail, alert color, pulse) for the decision row.
+
+    Irrigating is the *live* sprinkler state, not the instantaneous command: central's
+    decide() returns action="on" only on the one tick it fires the command, then keeps
+    the sprinkler running with action=None, so we must key off sprinkler.state too.
+    """
     d = info.get("decision") or {}
     action, reason, thr = d.get("action"), d.get("reason"), d.get("soil_threshold")
-    if action == "on":
-        return (f"Irrigating — {reason}" if reason else "Irrigating"), "blue"
+    running = (info.get("sprinkler") or {}).get("state") == "on"
     if action == "off":
-        return (f"Irrigation stopped — {reason}" if reason else "Irrigation stopped"), "gray"
+        # a stop the controller just commanded (rain / stop level) outranks the still-open valve
+        return "Stopped", reason, "gray", False
+    if running or action == "on":
+        detail = f"soil below {thr:.0f}%" if thr is not None else reason
+        return "Irrigating", detail, "blue", True
     if thr is not None:
-        return f"Hold — irrigate below {thr:.0f}%", "gray"
-    return str(reason or "No decision yet"), "gray"
+        return "Hold", f"irrigate below {thr:.0f}%", "gray", False
+    return "Idle", (str(reason) if reason else "no decision yet"), "gray", False
 
 
 # ---- charts ----------------------------------------------------------------

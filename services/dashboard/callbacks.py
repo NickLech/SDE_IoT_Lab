@@ -8,8 +8,8 @@ from dash.exceptions import PreventUpdate
 
 import core
 from components.header import status_rows
-from components.zone_card import zone_facts, zone_hero
-from viewmodel import chart_props, chart_series, decision_info, health_checks
+from components.zone_card import decision_row, zone_facts, zone_hero
+from viewmodel import chart_props, chart_series, health_checks
 
 
 @callback(
@@ -21,7 +21,6 @@ from viewmodel import chart_props, chart_series, decision_info, health_checks
     Output({"type": "zone-chart", "zone": ALL}, "data"),
     Output({"type": "zone-chart", "zone": ALL}, "referenceLines"),
     Output({"type": "zone-decision", "zone": ALL}, "children"),
-    Output({"type": "zone-decision", "zone": ALL}, "color"),
     Output({"type": "zone-facts", "zone": ALL}, "children"),
     Output("conn", "children"),
     Output("conn", "color"),
@@ -36,7 +35,7 @@ def refresh(_):
         return zones.get(z) or {"zone": z}
 
     keys = ("card", "sp_color", "sp_variant", "sp_class",
-            "hero", "data", "lines", "dec", "dec_color", "facts")
+            "hero", "data", "lines", "dec", "facts")
     col = {k: [] for k in keys}
 
     for z in zone_ids:
@@ -62,9 +61,7 @@ def refresh(_):
         col["data"].append(data)
         col["lines"].append(lines)
 
-        text, color = decision_info(i)
-        col["dec"].append(text)
-        col["dec_color"].append(color)
+        col["dec"].append(decision_row(i))
         col["facts"].append(zone_facts(z, i))
 
     checks = health_checks(zone_ids, info, central_up, core.connected.is_set())
@@ -80,7 +77,7 @@ def refresh(_):
     return (
         col["card"], col["sp_color"], col["sp_variant"], col["sp_class"],
         col["hero"], col["data"], col["lines"],
-        col["dec"], col["dec_color"], col["facts"],
+        col["dec"], col["facts"],
         conn_text, conn_color, status_rows(checks, last),
     )
 
@@ -106,7 +103,6 @@ def open_zone(_):
     Output("zone-modal-chart", "series"),
     Output("zone-modal-chart", "referenceLines"),
     Output("zone-modal-decision", "children"),
-    Output("zone-modal-decision", "color"),
     Output("zone-modal-facts", "children"),
     Input("tick", "n_intervals"),
     Input("expanded-zone", "data"),
@@ -119,9 +115,8 @@ def refresh_modal(_, zone, opened):
     zones = core.snapshot()[0]
     i = zones.get(zone) or {"zone": zone}
     data, lines = chart_props(zone)
-    text, color = decision_info(i)
     return (zone.replace("zone", "Zone "), zone_hero(i), data, chart_series(zone),
-            lines, text, color, zone_facts(zone, i))
+            lines, decision_row(i), zone_facts(zone, i))
 
 
 # ---- popup panels: status popover + log modal -------------------------------

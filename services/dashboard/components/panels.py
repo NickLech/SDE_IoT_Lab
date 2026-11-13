@@ -1,7 +1,7 @@
 import dash_mantine_components as dmc
 
 from core import RADIUS
-from components.zone_card import zone_chart
+from components.zone_card import decision_row, zone_chart
 
 
 def zone_modal():
@@ -11,7 +11,7 @@ def zone_modal():
         children=dmc.Stack(gap="md", children=[
             dmc.Group(id="zone-modal-hero", justify="space-between", align="flex-end"),
             zone_chart("zone-modal-chart", "zone1", 460),
-            dmc.Alert("–", id="zone-modal-decision", color="gray", variant="light", p="xs"),
+            dmc.Group(id="zone-modal-decision", align="center", gap="xs", wrap="nowrap", children=decision_row({})),
             dmc.SimpleGrid(id="zone-modal-facts", cols={"base": 2, "md": 3}, spacing="xs"),
         ]),
     )

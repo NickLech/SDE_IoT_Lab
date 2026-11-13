@@ -3,14 +3,17 @@ from dash import html
 from dash_iconify import DashIconify
 
 from core import RADIUS, lock, water_s
-from viewmodel import air_text, chart_series, command_text, spread_text, vpd_text
+from viewmodel import air_text, chart_series, command_text, decision_info, spread_text, vpd_text
 
 
-def fact(label, value):
+def fact(label, value, icon=None):
     return dmc.Paper(
-        p="xs", radius=RADIUS, bg="var(--mantine-color-gray-0)",
+        p="xs", radius="md", bg="var(--mantine-color-gray-0)",
         children=dmc.Group(justify="space-between", wrap="nowrap", gap="xs", children=[
-            dmc.Text(label, size="xs", c="dimmed"),
+            dmc.Group(gap="xs", wrap="nowrap", align="center", children=[
+                *([DashIconify(icon=icon, width=16)] if icon else []),
+                dmc.Text(label, size="xs", c="dimmed", fw=600, tt="uppercase"),
+            ]),
             dmc.Text(value, size="xs", ta="right"),
         ]),
     )
@@ -19,12 +22,15 @@ def fact(label, value):
 def zone_facts(zone, info):
     with lock:
         watered = water_s.get(zone, 0.0)
+    h, rem = divmod(int(watered), 3600)
+    m, s = divmod(rem, 60)
     return [
-        fact("air", air_text(info)),
-        fact("VPD", vpd_text(info)),
-        fact("agreement", spread_text(info)),
-        fact("watered", f"{watered / 60:.1f} min"),
-        fact("last cmd", command_text(info)),
+        fact("air", air_text(info), "tabler:temperature"),
+        fact("VPD", vpd_text(info), "tabler:droplet"),
+        fact("agreement", spread_text(info), "tabler:activity"),
+        (fact("watered", f"{h:02d} h {m:02d} min {s:02d} s", "tabler:history") if h > 0 
+         else fact("watered", f"{m:02d} min {s:02d} s", "tabler:history")) if watered > 0 
+         else fact("watered", "never", "tabler:history"),
     ]
 
 
@@ -55,6 +61,29 @@ def zone_hero(info):
     return [moisture, delta]
 
 
+DECISION_ICONS = {
+    "Irrigating": "tabler:droplets",
+    "Stopped": "tabler:circle-check",
+    "Hold": "tabler:clock",
+    "Idle": "tabler:minus",
+}
+
+
+def decision_row(info):
+    """Compact status dot-badge + muted detail, matching the hero/sprinkler badges."""
+    word, detail, color, pulse = decision_info(info)
+    icon = DECISION_ICONS.get(word, "tabler:minus")
+    children = [
+        DashIconify(icon=icon, width=16,
+                    style={"color": f"var(--mantine-color-{color}-filled)"}),
+        dmc.Badge(word, variant="dot", color=color, size="lg",
+                  className="sp-pulse" if pulse else ""),
+    ]
+    if detail:
+        children.append(dmc.Text(detail, size="xs", c="dimmed", tt="uppercase"))
+    return children
+
+
 def zone_chart(id_, zone, height):
     return dmc.CompositeChart(
         id=id_, h=height, data=[], dataKey="t", series=chart_series(zone),
@@ -66,7 +95,7 @@ def zone_chart(id_, zone, height):
 def zone_card(zone):
     return dmc.Paper(
         id={"type": "zone-card", "zone": zone},
-        className="zone", withBorder=True, radius=RADIUS, shadow="sm", p="md",
+        className="zone", withBorder=True, radius=RADIUS, shadow="sm", p="md", pb="lg",
         children=[
             html.Div(className="rain-layer"),
             dmc.Stack(gap="xs", children=[
@@ -92,9 +121,9 @@ def zone_card(zone):
                 dmc.Space(h="xs"),
                 zone_chart({"type": "zone-chart", "zone": zone}, zone, 190),
                 dmc.Space(h="xs"),
-                dmc.Alert("–", id={"type": "zone-decision", "zone": zone}, color="gray", variant="light", p="xs"),
-                dmc.SimpleGrid(id={"type": "zone-facts", "zone": zone}, cols=2,
-                               spacing="xs", children=zone_facts(zone, {})),
+                dmc.Group(id={"type": "zone-decision", "zone": zone}, align="center", gap="xs", wrap="nowrap", children=decision_row({})),
+                dmc.Space(h="0.3125rem"),
+                dmc.SimpleGrid(id={"type": "zone-facts", "zone": zone}, cols=1, spacing="sm", children=zone_facts(zone, {})),
             ]),
         ],
     )
