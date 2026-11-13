@@ -14,7 +14,8 @@ body {
   overflow: hidden;
   transition: transform .2s ease, box-shadow .4s ease, border-color .4s ease;
 }
-.zone:hover { transform: translateY(-2px); }
+.lift { transition: transform .2s ease, box-shadow .4s ease; }
+.zone:hover, .lift:hover { transform: translateY(-2px); }
 .zone > * { position: relative; z-index: 1; }
 
 .zone.raining { border-color: #bae6fd; background: linear-gradient(180deg, #eaf5ff 0, #fff 60%); }
@@ -69,7 +70,7 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .zone > .rain-layer, .zone::after, .sp-pulse { animation: none; }
-  .zone:hover { transform: none; }
+  .zone:hover, .lift:hover { transform: none; }
 }
 
 /* transparent click-catcher used to close the popup panels (status, log) when
