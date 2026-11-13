@@ -3,60 +3,63 @@ from dash import html
 from dash_iconify import DashIconify
 
 from core import RADIUS, lock, water_s
-from viewmodel import air_text, chart_series, command_text, decision_info, spread_text, vpd_text
+from viewmodel import (air_text, chart_series, command_text, decision_info,
+                       sprinkler_state, spread_text, vpd_text)
 
 
-def fact(label, value, icon=None):
+def fact(label, value, icon=None, big=False):
     return dmc.Paper(
-        p="xs", radius="md", bg="var(--mantine-color-gray-0)",
+        p="sm" if big else "xs", radius="md", bg="var(--mantine-color-gray-0)",
         children=dmc.Group(justify="space-between", wrap="nowrap", gap="xs", children=[
             dmc.Group(gap="xs", wrap="nowrap", align="center", children=[
-                *([DashIconify(icon=icon, width=16)] if icon else []),
-                dmc.Text(label, size="xs", c="dimmed", fw=600, tt="uppercase"),
+                *([DashIconify(icon=icon, width=20 if big else 16)] if icon else []),
+                dmc.Text(label, size="sm" if big else "xs", c="dimmed", fw=600, tt="uppercase"),
             ]),
-            dmc.Text(value, size="xs", ta="right"),
+            dmc.Text(value, size="sm" if big else "xs", ta="right"),
         ]),
     )
 
 
-def zone_facts(zone, info):
+def zone_facts(zone, info, big=False):
     with lock:
         watered = water_s.get(zone, 0.0)
     h, rem = divmod(int(watered), 3600)
     m, s = divmod(rem, 60)
     return [
-        fact("air", air_text(info), "tabler:temperature"),
-        fact("VPD", vpd_text(info), "tabler:droplet"),
-        fact("agreement", spread_text(info), "tabler:activity"),
-        (fact("watered", f"{h:02d} h {m:02d} min {s:02d} s", "tabler:history") if h > 0 
-         else fact("watered", f"{m:02d} min {s:02d} s", "tabler:history")) if watered > 0 
-         else fact("watered", "never", "tabler:history"),
+        fact("air", air_text(info), "tabler:temperature", big),
+        fact("VPD", vpd_text(info), "tabler:droplet", big),
+        fact("agreement", spread_text(info), "tabler:activity", big),
+        (fact("watered", f"{h:02d} h {m:02d} min {s:02d} s", "tabler:history", big) if h > 0 
+         else fact("watered", f"{m:02d} min {s:02d} s", "tabler:history", big)) if watered > 0 
+         else fact("watered", "never", "tabler:history", big),
     ]
 
 
-def zone_hero(info):
+def zone_hero(info, big=False):
     """Two compact dot-badges: soil moisture + signed distance to threshold."""
     median = (info.get("soil") or {}).get("median")
     thr = (info.get("decision") or {}).get("soil_threshold")
 
     if median is None:
-        return [dmc.Badge("avg. soil moisture", color="gray", variant="light", size="md")]
+        return [dmc.Badge("avg. soil moisture", color="gray", variant="light",
+                          size="xl" if big else "md")]
 
     moisture = dmc.Badge(
         dmc.Group(gap=6, wrap="nowrap", align="center", children=[
-            dmc.Text(f"{median:.0f}%", size="md", fw=700),
-            dmc.Text("avg. soil moisture", size="xs", c="dimmed"),
+            dmc.Text(f"{median:.0f}%", size="xl" if big else "md", fw=700),
+            dmc.Text("avg. soil moisture", size="sm" if big else "xs", c="dimmed"),
         ]),
-        color="blue", variant="light", size="lg",
+        color="blue", variant="light", size="xl" if big else "lg",
     )
 
     if thr is None:
-        delta = dmc.Badge("no threshold", color="gray", variant="dot", size="md")
+        delta = dmc.Badge("no threshold", color="gray", variant="dot",
+                          size="xl" if big else "md")
     else:
         gap = median - thr
         delta = dmc.Badge(f"{gap:+.0f} % from θ",
                           color="green" if gap >= 0 else "orange",
-                          variant="dot", size="md")
+                          variant="dot", size="xl" if big else "md")
 
     return [moisture, delta]
 
@@ -69,19 +72,35 @@ DECISION_ICONS = {
 }
 
 
-def decision_row(info):
+def decision_row(info, big=False):
     """Compact status dot-badge + muted detail, matching the hero/sprinkler badges."""
     word, detail, color, pulse = decision_info(info)
     icon = DECISION_ICONS.get(word, "tabler:minus")
     children = [
-        DashIconify(icon=icon, width=16,
+        DashIconify(icon=icon, width=20 if big else 16,
                     style={"color": f"var(--mantine-color-{color}-filled)"}),
-        dmc.Badge(word, variant="dot", color=color, size="lg",
+        dmc.Badge(word, variant="dot", color=color, size="xl" if big else "lg",
                   className="sp-pulse" if pulse else ""),
     ]
     if detail:
-        children.append(dmc.Text(detail, size="xs", c="dimmed", tt="uppercase"))
+        children.append(dmc.Text(detail, size="sm" if big else "xs", c="dimmed", tt="uppercase"))
     return children
+
+
+def sprinkler_badge(info, big=False):
+    """SPRINKLER dot-badge reflecting the live valve state (card badge mirror)."""
+    color, variant, pulse = sprinkler_state(info)
+    return dmc.Badge(
+        dmc.Group(gap=4, wrap="nowrap",
+                  children=[dmc.Text("SPRINKLER", size="sm" if big else "xs", fw=600)]),
+        color=color, variant=variant, size="xl" if big else "lg",
+        className="sp-pulse" if pulse else "")
+
+
+def modal_title(zone, info):
+    """Title row for the fullscreen modal: zone name + live SPRINKLER badge."""
+    return [dmc.Text(zone.replace("zone", "Zone #"), fw=700, size="xl"),
+            sprinkler_badge(info, big=True)]
 
 
 def zone_chart(id_, zone, height):

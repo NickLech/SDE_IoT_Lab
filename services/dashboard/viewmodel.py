@@ -70,6 +70,13 @@ def decision_info(info):
     return "Idle", (str(reason) if reason else "no decision yet"), "gray", False
 
 
+def sprinkler_state(info):
+    """(color, variant, pulse) for the SPRINKLER badge, from the live valve state."""
+    if (info.get("sprinkler") or {}).get("state") == "on":
+        return "blue", "dot", True
+    return "gray", "dot", False
+
+
 # ---- charts ----------------------------------------------------------------
 
 def chart_series(zone):

@@ -1,18 +1,22 @@
 import dash_mantine_components as dmc
 
 from core import RADIUS
-from components.zone_card import decision_row, zone_chart
+from components.zone_card import decision_row, zone_chart, zone_facts
 
 
 def zone_modal():
     return dmc.Modal(
         id="zone-modal", opened=False, fullScreen=True,
-        title=dmc.Text(id="zone-modal-title", fw=600),
+        title=dmc.Group(id="zone-modal-title", align="center", gap="sm"),
         children=dmc.Stack(gap="md", children=[
             dmc.Group(id="zone-modal-hero", justify="space-between", align="flex-end"),
-            zone_chart("zone-modal-chart", "zone1", 460),
-            dmc.Group(id="zone-modal-decision", align="center", gap="xs", wrap="nowrap", children=decision_row({})),
-            dmc.SimpleGrid(id="zone-modal-facts", cols={"base": 2, "md": 3}, spacing="xs"),
+            dmc.Grid(gap="lg", align="stretch", children=[
+                dmc.GridCol(span={"base": 12, "lg": 8}, children=zone_chart("zone-modal-chart", "zone1", 520)),
+                dmc.GridCol(span={"base": 6, "lg": 4}, children=dmc.Stack(gap="sm", children=[
+                    dmc.Group(id="zone-modal-decision", align="center", gap="xs", wrap="nowrap", children=decision_row({}, big=True)),
+                    dmc.SimpleGrid(id="zone-modal-facts", cols=1, spacing="sm", children=zone_facts("zone1", {}, big=True)),
+                ])),
+            ]),
         ]),
     )
 
