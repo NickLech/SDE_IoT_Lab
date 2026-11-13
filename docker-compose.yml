@@ -1,3 +1,14 @@
+# Un container per zona (zone1..zone3): soil-1..3, temperature, humidity, sprinkler.
+# Pioggia globale (rain). Controllo dei singoli dispositivi: ./ctl.sh (vedi README).
+x-zone: &zone
+  build:
+    context: .
+    dockerfile: services/zone/Dockerfile
+  depends_on:
+    broker:
+      condition: service_healthy
+  restart: unless-stopped
+
 services:
   broker:
     image: eclipse-mosquitto:2
@@ -14,24 +25,45 @@ services:
       retries: 3
     restart: unless-stopped
 
-  soil:
-    build: ./services/soil
+  # ---- zone: 3 soil + temperature (HTTP :5001) + humidity (HTTP :5002) + sprinkler ----
+  # Porte host per il debug: zone1 5001/5002, zone2 5011/5012, zone3 5021/5022
+  zone1:
+    <<: *zone
     environment:
       MQTT_HOST: broker
-    depends_on:
-      broker:
-        condition: service_healthy
-    restart: unless-stopped
+      ZONE: zone1
+      ZONE_INDEX: "0"
+      NOISE_STD: "0.4"      # come nel compose originale (letto solo se il servizio temperature lo supporta)
+      SPIKE_PROB: "0.02"
+    ports:
+      - "5001:5001"
+      - "5002:5002"
 
-  sprinkler:
-    build: ./services/sprinkler
+  zone2:
+    <<: *zone
     environment:
       MQTT_HOST: broker
-    depends_on:
-      broker:
-        condition: service_healthy
-    restart: unless-stopped
+      ZONE: zone2
+      ZONE_INDEX: "1"
+      NOISE_STD: "0.4"
+      SPIKE_PROB: "0.02"
+    ports:
+      - "5011:5001"
+      - "5012:5002"
 
+  zone3:
+    <<: *zone
+    environment:
+      MQTT_HOST: broker
+      ZONE: zone3
+      ZONE_INDEX: "2"
+      NOISE_STD: "0.4"
+      SPIKE_PROB: "0.02"
+    ports:
+      - "5021:5001"
+      - "5022:5002"
+
+  # ---- pioggia globale ----
   rain:
     build: ./services/rain
     environment:
@@ -39,17 +71,6 @@ services:
       RAIN_MIN_S: "120"
       RAIN_MAX_S: "300"
       RAIN_DURATION_S: "30"
-    depends_on:
-      broker:
-        condition: service_healthy
-    restart: unless-stopped
-
-  humidity:
-    build: ./services/humidity
-    environment:
-      MQTT_HOST: broker
-    ports:
-      - "5002:5002"
     depends_on:
       broker:
         condition: service_healthy
@@ -82,16 +103,6 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  # Temperature sensors (HTTP, polled by central)
-  temperature:
-    build: ./services/temperature
-    environment:
-      NOISE_STD: "0.4"
-      SPIKE_PROB: "0.02"
-    ports:
-      - "5001:5001"
-    restart: unless-stopped
-
   # Central node: soil fusion + air (HTTP pull) -> VPD -> irrigation decision; serves GET /zones to the dashboard
   central:
     build: ./services/central
@@ -99,8 +110,9 @@ services:
       MQTT_HOST: broker
       ZONES: "zone1,zone2,zone3"
       SENSORS_PER_ZONE: "3"
-      TEMPERATURE_URL: http://temperature:5001
-      HUMIDITY_URL: http://humidity:5002
+      # one temperature + one humidity sensor per zone container: {zone} -> zone1, zone2, zone3
+      TEMPERATURE_URL: "http://{zone}:5001"
+      HUMIDITY_URL: "http://{zone}:5002"
       POLL_INTERVAL_S: "5"
     ports:
       - "5100:5000"      # host 5100 -> container 5000 (macOS AirPlay already owns host 5000)
@@ -114,8 +126,10 @@ services:
     depends_on:
       broker:
         condition: service_healthy
-      temperature:
+      zone1:
         condition: service_started
-      humidity:
+      zone2:
+        condition: service_started
+      zone3:
         condition: service_started
     restart: unless-stopped

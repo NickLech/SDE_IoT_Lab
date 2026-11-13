@@ -9,6 +9,7 @@ Inputs
                field/<zone>/rain/state                {"state": "on"|"off"}
   HTTP (pull)  GET $TEMPERATURE_URL/zones/<zone>/temperature     every POLL_INTERVAL_S
                GET $HUMIDITY_URL/zones/<zone>/humidity
+               ($..._URL contains "{zone}": one sensor per zone container, e.g. http://zone1:5001)
 
 Outputs
   MQTT         field/<zone>/sprinkler/cmd   {"action": "on", "duration_s": N} | {"action": "off"}   (QoS 1, not retained)
@@ -42,8 +43,10 @@ log = logging.getLogger("central")
 # ----------------------------------------------------------------------------- config
 MQTT_HOST = os.environ.get("MQTT_HOST", "localhost")
 MQTT_PORT = int(os.environ.get("MQTT_PORT", 1883))
-TEMPERATURE_URL = os.environ.get("TEMPERATURE_URL", "http://localhost:5001").rstrip("/")
-HUMIDITY_URL = os.environ.get("HUMIDITY_URL", "http://localhost:5002").rstrip("/")
+# One temperature/humidity sensor per zone container: "{zone}" is replaced by the zone name
+# (e.g. http://zone1:5001). A URL without "{zone}" still works (single shared service).
+TEMPERATURE_URL = os.environ.get("TEMPERATURE_URL", "http://{zone}:5001").rstrip("/")
+HUMIDITY_URL = os.environ.get("HUMIDITY_URL", "http://{zone}:5002").rstrip("/")
 ZONES = [z.strip() for z in os.environ.get("ZONES", "zone1,zone2,zone3").split(",") if z.strip()]
 SENSORS_PER_ZONE = int(os.environ.get("SENSORS_PER_ZONE", 3))
 PORT = int(os.environ.get("PORT", 5000))
@@ -169,7 +172,7 @@ def poll_loop():
     while True:
         for zone in ZONES:
             for name, store, base in (("temperature", temp, TEMPERATURE_URL), ("humidity", humid, HUMIDITY_URL)):
-                url = f"{base}/zones/{zone}/{name}"
+                url = f"{base.format(zone=zone)}/zones/{zone}/{name}"
                 try:
                     with urllib.request.urlopen(url, timeout=HTTP_TIMEOUT_S) as resp:
                         value = float(json.load(resp)["value"])

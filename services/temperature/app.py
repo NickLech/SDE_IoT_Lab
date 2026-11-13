@@ -1,17 +1,12 @@
-"""Temperature service: simulated field temperatures exposed over HTTP (pull).
+"""Temperature sensor of ONE zone, exposed over HTTP (pull).
+
+Env: ZONE (e.g. zone1), ZONE_INDEX (0-based, sets the +0.5 degC per zone offset), PORT (default 5001)
 
 GET /zones/<zone>/temperature
-    -> {"zone": "zone1", "sensor_id": "temp-zone1", "value": 14.0,
-        "unit": "C", "timestamp": "..."}
+    -> {"zone": "zone1", "sensor_id": "temp-zone1", "value": 14.0, "unit": "C", "timestamp": "..."}
 
-The temperature follows a daily sine wave cicle based on how long the service has been running.
-Example for zone2: 14° + (5° * sin(2*pi * elapsed_seconds/600)) + 0.5° * 1
-0 min:         14°   6 AM
-2 min 30 sec:  19°   12 AM
-5 min:         14°   6 PM 
-7 min 30 sec:  7.5°  12 PM  
-10 min:        14°   6 AM next day
-The offset increases by 0.5° for every zone. 
+Daily sine cycle, one "day" = DAY_PERIOD_S seconds since the process started:
+    14 + 0.5 * ZONE_INDEX + 5 * sin(2*pi*elapsed/DAY_PERIOD_S)   (clamped to 5..20)
 """
 import json
 import math
@@ -21,7 +16,8 @@ from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 PORT = int(os.environ.get("PORT", 5001))
-ZONES = [z.strip() for z in os.environ.get("ZONES", "zone1,zone2,zone3").split(",") if z.strip()]
+ZONE = os.environ["ZONE"]
+ZONE_INDEX = int(os.environ.get("ZONE_INDEX", 0))
 DAY_PERIOD_S = float(os.environ.get("DAY_PERIOD_S", 600))
 
 MIN_TEMPERATURE = 5.0
@@ -40,11 +36,10 @@ def now_iso():
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def temperature(zone):
+def temperature():
     elapsed = time.monotonic() - START
     daily_cycle = math.sin(2 * math.pi * elapsed / DAY_PERIOD_S)
-    zone_offset = ZONE_OFFSET * ZONES.index(zone)
-    value = INITIAL_TEMPERATURE + zone_offset + TEMPERATURE_AMPLITUDE * daily_cycle
+    value = INITIAL_TEMPERATURE + ZONE_OFFSET * ZONE_INDEX + TEMPERATURE_AMPLITUDE * daily_cycle
     return round(min(MAX_TEMPERATURE, max(MIN_TEMPERATURE, value)), 2)
 
 
@@ -53,15 +48,9 @@ class Handler(BaseHTTPRequestHandler):
         parts = self.path.strip("/").split("/")
         if parts == ["health"]:
             self.reply(200, {"status": "ok"})
-        elif len(parts) == 3 and parts[0] == "zones" and parts[2] == "temperature" and parts[1] in ZONES:
-            zone = parts[1]
-            self.reply(200, {
-                "zone": zone,
-                "sensor_id": f"temp-{zone}",
-                "value": temperature(zone),
-                "unit": "C",
-                "timestamp": now_iso(),
-            })
+        elif parts == ["zones", ZONE, "temperature"]:
+            self.reply(200, {"zone": ZONE, "sensor_id": f"temp-{ZONE}", "value": temperature(),
+                             "unit": "C", "timestamp": now_iso()})
         else:
             self.reply(404, {"error": "not found"})
 
@@ -78,7 +67,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
-    print(f"temperature started: zones {ZONES}, port {PORT}")
+    print(f"temperature started: {ZONE}, port {PORT}", flush=True)
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
 
 

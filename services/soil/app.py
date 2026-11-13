@@ -1,11 +1,12 @@
-"""Soil service (simple): 9 soil-moisture sensors, one MQTT client, one loop.
+"""Single soil-moisture sensor (one process, one MQTT connection, one Last Will).
 
-- Publishes on field/<zone>/soil/<sensor_id>  (QoS 0)
-  {"zone", "sensor_id", "value", "unit": "%", "timestamp"}
-- Subscribes to field/+/sprinkler/state and field/+/rain/state  ({"state": "on"|"off"})
-- Every sensor starts with a random value in [INITIAL_MIN, INITIAL_MAX].
-- Every TICK_S seconds each sensor loses a random value in [DRY_MIN, DRY_MAX]
-  and gains WET_STEP for each active source of its zone (sprinkler, rain).
+Env: ZONE (e.g. zone1), SENSOR_INDEX (1..N)  ->  sensor_id = soil-<zone>-<index>
+
+- Publishes field/<zone>/soil/<sensor_id>         (QoS 0)  {"zone","sensor_id","value","unit","timestamp"}
+- Liveness   field/<zone>/soil/<sensor_id>/status (QoS 1, retained)  "online" | "offline"
+  "offline" is the Last Will (crash/kill) and is also published on graceful stop (SIGTERM),
+  because a clean DISCONNECT does not fire the Will.
+- Subscribes to field/<zone>/sprinkler/state and field/<zone>/rain/state.
 """
 import json
 import os
@@ -18,82 +19,78 @@ import paho.mqtt.client as mqtt
 
 MQTT_HOST = os.environ.get("MQTT_HOST", "localhost")
 MQTT_PORT = int(os.environ.get("MQTT_PORT", 1883))
-ZONES = ["zone1", "zone2", "zone3"]
-SENSORS_PER_ZONE = 3
+ZONE = os.environ["ZONE"]
+INDEX = int(os.environ["SENSOR_INDEX"])
+SENSOR_ID = f"soil-{ZONE}-{INDEX}"
 SOURCES = ["sprinkler", "rain"]
 
 TICK_S = 5
-INITIAL_MIN = 45.0  # % initial value, random per sensor
-INITIAL_MAX = 55.0
-DRY_MIN = 1.0       # % lost every tick, random per sensor
-DRY_MAX = 3.0
-WET_STEP = 10.0      # % gained every tick for each active source
-MIN_MOISTURE = 30.0
-MAX_MOISTURE = 85.0
+KEEPALIVE_S = 10
+INITIAL_MIN, INITIAL_MAX = 45.0, 55.0
+DRY_MIN, DRY_MAX = 1.0, 3.0
+WET_STEP = 10.0
+MIN_MOISTURE, MAX_MOISTURE = 30.0, 85.0
+
+STATUS_TOPIC = f"field/{ZONE}/soil/{SENSOR_ID}/status"
+VALUE_TOPIC = f"field/{ZONE}/soil/{SENSOR_ID}"
 
 
 def now_iso():
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-class SoilService:
+class SoilSensor:
     def __init__(self):
-        # sensor_id -> zone, and sensor_id -> current moisture
-        self.zone_of = {
-            f"soil-{z}-{i}": z for z in ZONES for i in range(1, SENSORS_PER_ZONE + 1)
-        }
-        self.moisture = {s: random.uniform(INITIAL_MIN, INITIAL_MAX) for s in self.zone_of}
-        self.wet = {z: {s: False for s in SOURCES} for z in ZONES}
-
-        self.client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id="soil-service")
+        self.moisture = random.uniform(INITIAL_MIN, INITIAL_MAX)
+        self.wet = {s: False for s in SOURCES}
+        self.client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=SENSOR_ID)
         self.client.on_connect = self.on_connect
         self.client.on_message = self.on_message
+        self.client.will_set(STATUS_TOPIC, "offline", qos=1, retain=True)
 
     def on_connect(self, client, userdata, flags, reason_code, properties):
-        client.subscribe([(f"field/+/{s}/state", 1) for s in SOURCES])
+        client.subscribe([(f"field/{ZONE}/{s}/state", 1) for s in SOURCES])
+        client.publish(STATUS_TOPIC, "online", qos=1, retain=True)
 
     def on_message(self, client, userdata, msg):
         try:
-            _, zone, source, _ = msg.topic.split("/")
+            source = msg.topic.split("/")[2]
             state = json.loads(msg.payload).get("state")
-        except (ValueError, AttributeError):
+        except (ValueError, AttributeError, IndexError):
             return
-        if zone in self.wet and source in self.wet[zone]:
-            self.wet[zone][source] = (state == "on")
+        if source in self.wet:
+            self.wet[source] = (state == "on")
 
     def step(self):
-        for sensor_id, zone in self.zone_of.items():
-            delta = -random.uniform(DRY_MIN, DRY_MAX) + WET_STEP * sum(self.wet[zone].values())
-            value = self.moisture[sensor_id] + delta
-            self.moisture[sensor_id] = min(MAX_MOISTURE, max(MIN_MOISTURE, value))
+        delta = -random.uniform(DRY_MIN, DRY_MAX) + WET_STEP * sum(self.wet.values())
+        self.moisture = min(MAX_MOISTURE, max(MIN_MOISTURE, self.moisture + delta))
 
-    def publish_readings(self):
-        for sensor_id, zone in self.zone_of.items():
-            payload = {
-                "zone": zone,
-                "sensor_id": sensor_id,
-                "value": round(self.moisture[sensor_id], 2),
-                "unit": "%",
-                "timestamp": now_iso(),
-            }
-            self.client.publish(f"field/{zone}/soil/{sensor_id}", json.dumps(payload), qos=0)
+    def publish_reading(self):
+        payload = {"zone": ZONE, "sensor_id": SENSOR_ID, "value": round(self.moisture, 2),
+                   "unit": "%", "timestamp": now_iso()}
+        self.client.publish(VALUE_TOPIC, json.dumps(payload), qos=0)
 
     def run(self, stop):
-        self.client.connect_async(MQTT_HOST, MQTT_PORT)
+        self.client.connect_async(MQTT_HOST, MQTT_PORT, keepalive=KEEPALIVE_S)
         self.client.loop_start()
-        print(f"soil started: {len(self.zone_of)} sensors on {ZONES}")
+        print(f"{SENSOR_ID} started", flush=True)
         while not stop.wait(TICK_S):
             self.step()
-            self.publish_readings()
+            self.publish_reading()
+        try:
+            self.client.publish(STATUS_TOPIC, "offline", qos=1, retain=True).wait_for_publish(2)
+        except (RuntimeError, ValueError):
+            pass
         self.client.loop_stop()
         self.client.disconnect()
+        print(f"{SENSOR_ID} stopped", flush=True)
 
 
 def main():
     stop = threading.Event()
     signal.signal(signal.SIGTERM, lambda *_: stop.set())
     signal.signal(signal.SIGINT, lambda *_: stop.set())
-    SoilService().run(stop)
+    SoilSensor().run(stop)
 
 
 if __name__ == "__main__":
