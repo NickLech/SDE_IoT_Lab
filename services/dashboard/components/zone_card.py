@@ -1,5 +1,3 @@
-"""One zone card: header badges, hero readout, chart, decision, facts."""
-
 import dash_mantine_components as dmc
 from dash import html
 

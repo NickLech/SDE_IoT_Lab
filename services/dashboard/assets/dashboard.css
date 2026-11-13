@@ -83,3 +83,17 @@ body {
   z-index: 900;
 }
 
+/* Dash keeps the full-screen #scrim (z 900) for the status popover, and DMC
+   renders each Modal's root inline; the opened Modal would sit under it, and
+   every "inside" click would hit the scrim (closing the modal instantly,
+   controls unclickable). Pin only OPENED Modal roots as a full-screen layer
+   above the scrim (900) and below the popover (1000) — :has(...) excludes
+   closed modal roots, which must stay out of the way (Playwright: a blanket
+   rule made the empty #zone-modal root intercept every click). Close and
+   dimming stay Mantine's own (withOverlay / ✕ / Esc). */
+.mantine-Modal-root:has(> .mantine-Modal-inner > .mantine-Modal-content) {
+  position: fixed;
+  inset: 0;
+  z-index: 950;
+}
+
