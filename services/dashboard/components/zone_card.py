@@ -118,6 +118,12 @@ def zone_card(zone):
         className="zone", withBorder=True, radius=RADIUS, shadow="sm", p="md", pb="lg",
         children=[
             html.Div(className="rain-layer"),
+            html.Div(className="sky", children=[
+                html.Div(className="fog fog-a"),
+                html.Div(className="fog fog-b"),
+                html.Div(className="fog fog-c"),
+            ]),
+            html.Div(className="ground"),
             dmc.Stack(gap="xs", children=[
                 dmc.Group(justify="space-between", wrap="nowrap", children=[
                     dmc.Text(zone.replace("zone", "Zone #"), fw=700, size="lg"),
