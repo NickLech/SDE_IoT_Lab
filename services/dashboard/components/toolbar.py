@@ -37,8 +37,9 @@ def _step(n, title, formula, note):
 
 
 def _model_paper():
-    return dmc.Card(withBorder=True, radius=RADIUS, padding="md", shadow="sm",
+    return dmc.Card(withBorder=True, radius=RADIUS, padding="md", mt="sm", mb="sm", shadow="sm",
                 w="100%", className="lift", children=dmc.Stack([
+            dmc.Text("Irrigation model", fw=600, size="sm"),
             dmc.SimpleGrid(cols={"base": 1, "md": 3}, spacing="md", children=[
                 _step(1, "Saturation pressure",
                       r"\displaystyle e_s(T)=0.6108\,\exp\!\Big(\frac{17.27\,T}{T+237.3}\Big)\;[\mathrm{kPa}]",
@@ -58,7 +59,7 @@ def toolbar():
     # goes on top (right-aligned), the model Paper sits under the zone cards.
     controls = dmc.Paper(withBorder=True, radius=RADIUS, p="xs", w="fit-content", ml="auto",
                          children=dmc.Group(gap="sm", children=[
-        dmc.Tooltip(label="MQTT log", radius=RADIUS, children=dmc.ActionIcon(
+        dmc.Tooltip(label="MQTT logs", radius=RADIUS, children=dmc.ActionIcon(
             DashIconify(icon="tabler:terminal-2", width=20), id="open-log", variant="light", size="lg")),
         dmc.SegmentedControl(id="rain-mode", value="auto", radius=RADIUS, data=[
             {"value": "auto", "label": dmc.Group(gap=4, align="center", wrap="nowrap", children=[

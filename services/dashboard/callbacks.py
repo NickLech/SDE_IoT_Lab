@@ -135,40 +135,38 @@ def refresh_modal(_, zone, opened):
             lines, text, color, zone_facts(zone, i))
 
 
-# ---- popup panels: status details + log drawer (with click-outside close) ---
-# One callback owns both panels' `display` AND the shared scrim, because a
-# click on the scrim has to close them both. `dmc.Paper` has no n_clicks,
-# so dismissal is done with a transparent full-screen div (#scrim, z-index 900)
-# that sits under both panels (z-index 1000): clicking anywhere outside either
-# panel hits the scrim and closes whichever panels are open.
+# ---- popup panels: status popover + log modal -------------------------------
+# Two independent mechanisms now:
+#  * Log drawer is a proper dmc.Modal (withOverlay, withCloseButton, escape and
+#    outside-click all handled by Mantine itself) — DMC reports those closes
+#    back as opened=False, so this callback only ever OPENS it (via open-log).
+#  * The popover uses the #scrim click-catcher (z-index 900) so an outside
+#    click dismisses it while the status panel itself (z-index 1000) stays
+#    clickable. The scrim is only used for the popover, not the modal.
 
 @callback(
     Output("status-details", "display"),
-    Output("log-drawer", "display"),
+    Output("log-drawer", "opened"),
     Output("scrim", "style"),
     Input("conn", "n_clicks"),
     Input("open-log", "n_clicks"),
-    Input("close-log", "n_clicks"),
     Input("scrim", "n_clicks"),
     State("status-details", "display"),
-    State("log-drawer", "display"),
+    State("log-drawer", "opened"),
     prevent_initial_call=True,
 )
-def toggle_panels(conn, open_log, close_log, scrim, status_shown, log_shown):
+def toggle_panels(conn, open_log, scrim_click, status_shown, log_shown):
     status = status_shown not in (None, "none")
-    log = log_shown not in (None, "none")
+    log = bool(log_shown)
     trig = ctx.triggered_id
     if trig == "conn":
         status = not status
     elif trig == "open-log":
-        log = True
-    elif trig == "close-log":
-        log = False
+        log = not log
     elif trig == "scrim":
-        status = log = False
-    shown = status or log
-    style = {"display": "block"} if shown else {"display": "none"}
-    return ("block" if status else "none"), ("block" if log else "none"), style
+        status = False
+    style = {"display": "block"} if status else {"display": "none"}
+    return ("block" if status else "none"), log, style
 
 
 # ---- log drawer content ------------------------------------------------------
@@ -178,11 +176,11 @@ def toggle_panels(conn, open_log, close_log, scrim, status_shown, log_shown):
     Output("log", "children"),
     Input("tick", "n_intervals"),
     Input("show-telemetry", "checked"),
-    State("log-drawer", "display"),
+    State("log-drawer", "opened"),
     prevent_initial_call=True,
 )
-def refresh_log(_, telemetry, display):
-    if display in (None, "none"):
+def refresh_log(_, telemetry, opened):
+    if not opened:
         raise PreventUpdate
     return core.recent_log(bool(telemetry)) or "waiting for messages…"
 

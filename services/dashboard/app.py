@@ -12,7 +12,7 @@ from waitress import serve
 
 import core
 from components.header import header
-from components.panels import about, log_drawer, zone_modal
+from components.panels import assignment, log_drawer, zone_modal
 from components.toolbar import toolbar
 from components.zone_card import zone_card
 
@@ -40,7 +40,7 @@ app.layout = dmc.MantineProvider(theme={"radius": {"xl": "1rem"}}, children=[
             controls,
             dmc.SimpleGrid(cols={"base": 1, "md": 2, "xl": 3}, children=[zone_card(z) for z in core.ZONES]),
             model,
-            about(),
+            assignment(),
         ]))),
     ]),
     log_drawer(),
