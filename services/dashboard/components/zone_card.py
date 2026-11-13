@@ -87,8 +87,9 @@ def decision_row(info):
 def zone_chart(id_, zone, height):
     return dmc.CompositeChart(
         id=id_, h=height, data=[], dataKey="t", series=chart_series(zone),
-        curveType="monotone", withDots=False, withLegend=False, unit="%",
-        yAxisProps={"domain": [0, 100]}, referenceLines=[], gridAxis="y",
+        curveType="natural", withDots=False, withLegend=False, unit="%",
+        yAxisProps={"domain": [0, 100]}, referenceLines=[], referenceAreas=[],
+        gridAxis="y", areaProps={"strokeWidth": 3}, lineProps={"strokeWidth": 1},
     )
 
 

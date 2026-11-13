@@ -20,6 +20,7 @@ from viewmodel import chart_props, chart_series, health_checks
     Output({"type": "zone-hero", "zone": ALL}, "children"),
     Output({"type": "zone-chart", "zone": ALL}, "data"),
     Output({"type": "zone-chart", "zone": ALL}, "referenceLines"),
+    Output({"type": "zone-chart", "zone": ALL}, "referenceAreas"),
     Output({"type": "zone-decision", "zone": ALL}, "children"),
     Output({"type": "zone-facts", "zone": ALL}, "children"),
     Output("conn", "children"),
@@ -35,7 +36,7 @@ def refresh(_):
         return zones.get(z) or {"zone": z}
 
     keys = ("card", "sp_color", "sp_variant", "sp_class",
-            "hero", "data", "lines", "dec", "facts")
+            "hero", "data", "lines", "areas", "dec", "facts")
     col = {k: [] for k in keys}
 
     for z in zone_ids:
@@ -57,9 +58,10 @@ def refresh(_):
 
         col["hero"].append(zone_hero(i))
 
-        data, lines = chart_props(z)
+        data, lines, areas = chart_props(z)
         col["data"].append(data)
         col["lines"].append(lines)
+        col["areas"].append(areas)
 
         col["dec"].append(decision_row(i))
         col["facts"].append(zone_facts(z, i))
@@ -76,7 +78,7 @@ def refresh(_):
 
     return (
         col["card"], col["sp_color"], col["sp_variant"], col["sp_class"],
-        col["hero"], col["data"], col["lines"],
+        col["hero"], col["data"], col["lines"], col["areas"],
         col["dec"], col["facts"],
         conn_text, conn_color, status_rows(checks, last),
     )
@@ -102,6 +104,7 @@ def open_zone(_):
     Output("zone-modal-chart", "data"),
     Output("zone-modal-chart", "series"),
     Output("zone-modal-chart", "referenceLines"),
+    Output("zone-modal-chart", "referenceAreas"),
     Output("zone-modal-decision", "children"),
     Output("zone-modal-facts", "children"),
     Input("tick", "n_intervals"),
@@ -114,9 +117,9 @@ def refresh_modal(_, zone, opened):
         raise PreventUpdate
     zones = core.snapshot()[0]
     i = zones.get(zone) or {"zone": zone}
-    data, lines = chart_props(zone)
+    data, lines, areas = chart_props(zone)
     return (zone.replace("zone", "Zone "), zone_hero(i), data, chart_series(zone),
-            lines, decision_row(i), zone_facts(zone, i))
+            lines, areas, decision_row(i), zone_facts(zone, i))
 
 
 # ---- popup panels: status popover + log modal -------------------------------

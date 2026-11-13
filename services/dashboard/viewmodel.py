@@ -79,27 +79,35 @@ def chart_series(zone):
 
 
 def chart_props(zone):
-    """Return (data, referenceLines) for the zone chart."""
+    """Return (data, referenceLines, referenceAreas) for the zone chart."""
     with lock:
         pts = list(history.get(zone, []))
 
     names = {sid: f"s{i}" for i, sid in enumerate(SENSOR_IDS[zone], 1)}
-    data, starts, prev = [], [], False
+    data, times, on_flags = [], [], []
     for p in pts:
         t = datetime.fromtimestamp(p["t"]).strftime("%H:%M:%S")
         row = {"t": t, "median": p["median"]}
         row.update({name: p["s"].get(sid) for sid, name in names.items()})
         data.append(row)
-        if p["on"] and not prev:
-            starts.append({"x": t, "color": "blue.3", "label": "sprinkler on"})
-        prev = p["on"]
+        times.append(t)
+        on_flags.append(p["on"])
 
-    lines = starts[-5:]
+    # One shaded band per contiguous sprinkler-ON stretch; an ongoing stretch
+    # reaches the latest sample. Reference areas render behind the series.
+    areas, start = [], None
+    for idx, (t, on) in enumerate(zip(times, on_flags)):
+        if on and start is None:
+            start = t
+        elif not on and start is not None:
+            areas.append({"x1": start, "x2": times[idx - 1], "color": "blue.1"})
+            start = None
+    if start is not None:
+        areas.append({"x1": start, "x2": times[-1], "color": "blue.1"})
+
     thr = pts[-1]["thr"] if pts else None
-    if thr is not None:
-        lines.insert(0, {"y": thr, "color": "orange.6", "strokeDasharray": "4 4",
-                         "label": f"irrigate below {thr:.0f}%"})
-    return data, lines
+    lines = [{"y": thr, "color": "orange.6"}] if thr is not None else []
+    return data, lines, areas[-6:]
 
 
 # ---- health (every online/offline status lives here) -----------------------
