@@ -7,8 +7,9 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install -r requirements.txt
 
-COPY app.py .
-COPY assets assets
+COPY app.py core.py viewmodel.py callbacks.py ./
+COPY components/ ./components/
+COPY assets/ ./assets/
 RUN useradd --system --no-create-home dash
 USER dash
 

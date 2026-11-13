@@ -5,6 +5,7 @@ Inputs
                field/<zone>/soil/<sensor_id>/status   "online" | "offline"    Last Will
                field/<zone>/sprinkler/state           {"state": "on"|"off"}   retained
                field/<zone>/sprinkler/cmd             {"action": "on"|"off"}  own and external commands
+               field/<zone>/sprinkler/status          "online" | "offline"    Last Will
                field/<zone>/rain/state                {"state": "on"|"off"}
   HTTP (pull)  GET $TEMPERATURE_URL/zones/<zone>/temperature     every POLL_INTERVAL_S
                GET $HUMIDITY_URL/zones/<zone>/humidity
@@ -78,6 +79,7 @@ status = {}                                 # (zone, sensor_id) -> "online" | "o
 temp = {}                                   # zone -> deque[(degC, received_at)]   HTTP pull
 humid = {}                                  # zone -> deque[(%RH, received_at)]    HTTP pull
 sprinkler = {z: {"state": None, "until": None} for z in ZONES}
+sprinkler_status = {z: None for z in ZONES}       # "online"|"offline": liveness, independent of on/off
 rain = {z: None for z in ZONES}
 cmd_until = {}                              # zone -> expected end of the last "on" command
 connected = threading.Event()
@@ -99,7 +101,7 @@ def is_number(x):
 def on_connect(client, userdata, flags, reason_code, properties):
     log.info("connected to broker (%s)", reason_code)
     client.subscribe([("field/+/soil/+", 1), ("field/+/soil/+/status", 1), ("field/+/sprinkler/state", 1),
-                      ("field/+/sprinkler/cmd", 1), ("field/+/rain/state", 1)])
+                      ("field/+/sprinkler/status", 1), ("field/+/sprinkler/cmd", 1), ("field/+/rain/state", 1)])
     connected.set()
 
 
@@ -128,6 +130,8 @@ def on_message(client, userdata, msg):
             status[(zone, parts[3])] = text
         elif kind == "rain" and len(parts) == 4 and parts[3] == "state" and isinstance(data, dict):
             rain[zone] = data.get("state")
+        elif kind == "sprinkler" and parts[3] == "status":   # field/<zone>/sprinkler/status (plain text)
+            sprinkler_status[zone] = text
         elif kind == "sprinkler" and len(parts) == 4 and isinstance(data, dict):
             if parts[3] == "cmd":
                 if data.get("action") == "on":
@@ -208,7 +212,7 @@ def fresh(store, zone, lo, hi, now):
     return round(statistics.median(samples), 2) if samples else None
 
 
-def build_view(now, soil_c, status_c, temp_c, humid_c, sprinkler_c, rain_c):
+def build_view(now, soil_c, status_c, temp_c, humid_c, sprinkler_c, sprinkler_status_c, rain_c):
     """Turns the raw state into one dict per zone (soil + air + VPD + sprinkler + rain)."""
     zones = {}
     for zone in ZONES:
@@ -234,13 +238,17 @@ def build_view(now, soil_c, status_c, temp_c, humid_c, sprinkler_c, rain_c):
             vpd = {"kpa": round(kpa, 3), "band": vpd_band(kpa), "leaf_offset_c": LEAF_TEMP_OFFSET}
 
         sp = sprinkler_c[zone]
-        remaining = max(0.0, sp["until"] - now) if sp["state"] == "on" and sp["until"] else None
+        # Liveness wins over the last retained on/off: the device may be gone while
+        # its last state lingers (retained) on the broker. Only an explicit
+        # "offline" (farewell publish or broker-fired Last Will) marks it gone.
+        sp_state = "offline" if sprinkler_status_c.get(zone) == "offline" else (sp["state"] or "unknown")
+        remaining = max(0.0, sp["until"] - now) if sp_state == "on" and sp["until"] else None
         zones[zone] = {
             "soil": {"median": None if median is None else round(median, 1),
                      "valid": len(valid), "expected": len(SENSOR_IDS[zone])},
             "air": {"temperature": t, "humidity": rh},
             "vpd": vpd,
-            "sprinkler": {"state": sp["state"] or "unknown",
+            "sprinkler": {"state": sp_state,
                           "remaining_s": None if remaining is None else round(remaining, 1)},
             "rain": rain_c.get(zone) or "unknown",
             "sensors": sensors,
@@ -293,8 +301,9 @@ def control_step():
         soil_c, status_c = dict(soil), dict(status)
         temp_c, humid_c = {z: list(d) for z, d in temp.items()}, {z: list(d) for z, d in humid.items()}
         sprinkler_c = {z: dict(v) for z, v in sprinkler.items()}
+        sprinkler_status_c = dict(sprinkler_status)
         rain_c = dict(rain)
-    zones = build_view(now, soil_c, status_c, temp_c, humid_c, sprinkler_c, rain_c)
+    zones = build_view(now, soil_c, status_c, temp_c, humid_c, sprinkler_c, sprinkler_status_c, rain_c)
     mqtt_up = connected.is_set()
 
     for zone, view in zones.items():

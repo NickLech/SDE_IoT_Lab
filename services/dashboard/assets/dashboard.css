@@ -1,0 +1,84 @@
+/* Only what Mantine can't express: page canvas + the zone-card weather
+   (sun when dry, rain when raining, glow when the sprinkler is on). */
+
+body {
+  background:
+    radial-gradient(1200px 500px at 8% -10%, #dbe8ff 0, transparent 60%),
+    radial-gradient(900px 500px at 100% 0, #d9f4f1 0, transparent 55%),
+    #eef1f6;
+  background-attachment: fixed;
+}
+
+.zone {
+  position: relative;
+  overflow: hidden;
+  transition: transform .2s ease, box-shadow .4s ease, border-color .4s ease;
+}
+.zone:hover { transform: translateY(-2px); }
+.zone > * { position: relative; z-index: 1; }
+
+.zone.raining { border-color: #bae6fd; background: linear-gradient(180deg, #eaf5ff 0, #fff 60%); }
+.zone:not(.raining) { border-color: #f6e3b8; background: linear-gradient(180deg, #fffaef 0, #fff 60%); }
+.zone.watering {
+  border-color: #c7d9ff;
+  box-shadow: 0 0 0 1px #c7d9ff, 0 14px 34px -14px rgba(37, 99, 235, .5);
+}
+
+/* rain: three SVG streak tiles with different sizes -> parallax */
+.zone > .rain-layer {
+  position: absolute; inset: 0; z-index: 0; pointer-events: none;
+  opacity: 0; transition: opacity 1.2s ease;
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='140'%3E%3Cg stroke='%232563eb' stroke-opacity='.30' stroke-linecap='round' stroke-width='1.2'%3E%3Cpath d='M14 8l-2 14M52 70l-2 12M91 30l-2 16M33 110l-2 13M103 100l-2 11'/%3E%3C/g%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='90' height='100'%3E%3Cg stroke='%230ea5e9' stroke-opacity='.25' stroke-linecap='round' stroke-width='1'%3E%3Cpath d='M20 12l-2 10M70 40l-2 11M40 78l-2 9'/%3E%3C/g%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='150' height='170'%3E%3Cg stroke='%232563eb' stroke-opacity='.20' stroke-linecap='round' stroke-width='1.4'%3E%3Cpath d='M30 20l-3 18M110 60l-3 17M70 130l-3 16M135 140l-3 15'/%3E%3C/g%3E%3C/svg%3E");
+  background-size: 120px 140px, 90px 100px, 150px 170px;
+  animation: rain-fall 1.8s linear infinite;
+}
+.zone.raining > .rain-layer { opacity: 1; }
+@keyframes rain-fall { to { background-position: 0 140px, 0 100px, 0 170px; } }
+
+/* sun: warm disc + wash (::before) and slowly rotating rays (::after) */
+.zone::before {
+  content: ""; position: absolute; inset: 0; z-index: 0; pointer-events: none;
+  transition: opacity 1.2s ease;
+  background:
+    radial-gradient(circle 26px at calc(100% - 27px) 27px,
+      rgba(253, 224, 71, .65) 0, rgba(251, 191, 36, .5) 16px,
+      rgba(245, 158, 11, .3) 23px, transparent 26px),
+    radial-gradient(340px 220px at 88% -18%, rgba(251, 191, 36, .15), transparent 65%);
+}
+.zone::after {
+  content: ""; position: absolute; top: -58px; right: -58px; width: 170px; height: 170px;
+  z-index: 0; pointer-events: none; border-radius: 50%; opacity: .6;
+  background: repeating-conic-gradient(rgba(245, 158, 11, .35) 0 6deg, transparent 6deg 30deg);
+  -webkit-mask: radial-gradient(closest-side, transparent 0 46%, #000 48% 78%, transparent 80%);
+          mask: radial-gradient(closest-side, transparent 0 46%, #000 48% 78%, transparent 80%);
+  transition: opacity 1.2s ease;
+  animation: sun-spin 48s linear infinite;
+}
+.zone.raining::before, .zone.raining::after { opacity: 0; }
+@keyframes sun-spin { to { transform: rotate(360deg); } }
+
+/* active sprinkler badge */
+.sp-pulse { animation: pulse 1.8s ease-in-out infinite; }
+@keyframes pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(37, 99, 235, .4); }
+  50%      { box-shadow: 0 0 0 5px rgba(37, 99, 235, 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .zone > .rain-layer, .zone::after, .sp-pulse { animation: none; }
+  .zone:hover { transform: none; }
+}
+
+/* transparent click-catcher used to close the popup panels (status, log) when
+   the user clicks anywhere outside them; it must stay below both panels, which
+   are at z-index 1000. The callback toggles only its `display`. */
+.scrim {
+  position: fixed;
+  inset: 0;
+  background: transparent;
+  z-index: 900;
+}
+
