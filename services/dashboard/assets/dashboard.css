@@ -138,6 +138,17 @@ body {
 .zone.raining .ground::before { opacity: 0; }
 .zone.raining .ground::after { opacity: 1; }
 
+
+/* ---- irrigating: sprinkler heads spray arcs of water, the ground gets wet ---- */
+.zone.watering > .ground {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='110' height='64'%3E%3Cellipse cx='55' cy='57' rx='10' ry='5' fill='%23bfdbfe' fill-opacity='.35'/%3E%3Cpath d='M55 61 Q44 9 33 61' fill='none' stroke='%2360a5fa' stroke-width='1.4' stroke-linecap='round' stroke-dasharray='1.4 4.6' stroke-opacity='.9'%3E%3Canimate attributeName='stroke-dashoffset' from='0' to='-6' dur='0.6s' repeatCount='indefinite'/%3E%3C/path%3E%3Cpath d='M55 61 Q66 9 77 61' fill='none' stroke='%2360a5fa' stroke-width='1.4' stroke-linecap='round' stroke-dasharray='1.4 4.6' stroke-opacity='.9'%3E%3Canimate attributeName='stroke-dashoffset' from='0' to='-6' dur='0.6s' repeatCount='indefinite'/%3E%3C/path%3E%3Cpath d='M55 61 Q38 -11 21 61' fill='none' stroke='%2360a5fa' stroke-width='1.4' stroke-linecap='round' stroke-dasharray='1.4 4.6' stroke-opacity='.9'%3E%3Canimate attributeName='stroke-dashoffset' from='0' to='-6' dur='0.7s' repeatCount='indefinite'/%3E%3C/path%3E%3Cpath d='M55 61 Q72 -11 89 61' fill='none' stroke='%2360a5fa' stroke-width='1.4' stroke-linecap='round' stroke-dasharray='1.4 4.6' stroke-opacity='.9'%3E%3Canimate attributeName='stroke-dashoffset' from='0' to='-6' dur='0.7s' repeatCount='indefinite'/%3E%3C/path%3E%3Cpath d='M55 61 Q33 1 11 61' fill='none' stroke='%2360a5fa' stroke-width='1.4' stroke-linecap='round' stroke-dasharray='1.4 4.6' stroke-opacity='.9'%3E%3Canimate attributeName='stroke-dashoffset' from='0' to='-6' dur='0.8s' repeatCount='indefinite'/%3E%3C/path%3E%3Cpath d='M55 61 Q77 1 99 61' fill='none' stroke='%2360a5fa' stroke-width='1.4' stroke-linecap='round' stroke-dasharray='1.4 4.6' stroke-opacity='.9'%3E%3Canimate attributeName='stroke-dashoffset' from='0' to='-6' dur='0.8s' repeatCount='indefinite'/%3E%3C/path%3E%3Ccircle cx='55' cy='62' r='2.6' fill='%2394a3b8'/%3E%3Ccircle cx='55' cy='62' r='1.2' fill='%23cbd5e1'/%3E%3C/svg%3E");
+  background-repeat: repeat-x; background-size: 110px 64px; background-position: 50% 100%;
+  animation: spray-in .9s ease both;
+}
+@keyframes spray-in { from { opacity: 0; } to { opacity: 1; } }
+.zone.watering:not(.raining) .ground::before { opacity: .3; }
+.zone.watering:not(.raining) .ground::after  { opacity: .9; }
+
 /* active sprinkler badge */
 .sp-pulse { animation: pulse 1.8s ease-in-out infinite; }
 @keyframes pulse {
@@ -146,6 +157,7 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .zone.watering > .ground { background-image: none; animation: none; }
   .ground::after { background-image: linear-gradient(0deg, rgba(59, 130, 246, .30) 0, rgba(96, 165, 250, .12) 42%, transparent 88%); }
   .zone > .rain-layer, .zone::after, .sky::before, .sky::after, .fog, .ground::before, .sp-pulse { animation: none; }
   .zone:hover, .lift:hover { transform: none; }

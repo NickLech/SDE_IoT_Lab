@@ -41,13 +41,13 @@ def zone_hero(info, big=False):
     thr = (info.get("decision") or {}).get("soil_threshold")
 
     if median is None:
-        return [dmc.Badge("avg. soil moisture", color="gray", variant="light",
+        return [dmc.Badge("median soil moisture", color="gray", variant="light",
                           size="xl" if big else "md")]
 
     moisture = dmc.Badge(
         dmc.Group(gap=6, wrap="nowrap", align="center", children=[
             dmc.Text(f"{median:.0f}%", size="xl" if big else "md", fw=700),
-            dmc.Text("avg. soil moisture", size="sm" if big else "xs", c="dimmed"),
+            dmc.Text("median soil moisture", size="sm" if big else "xs", c="dimmed"),
         ]),
         color="blue", variant="light", size="xl" if big else "lg",
     )
