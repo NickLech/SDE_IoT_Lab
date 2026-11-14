@@ -8,7 +8,8 @@ from dash.exceptions import PreventUpdate
 
 import core
 from components.header import status_rows
-from components.zone_card import decision_row, modal_title, zone_facts, zone_hero
+from components.zone_card import (decision_row, modal_title, weather_class,
+                                  zone_facts, zone_hero)
 from viewmodel import chart_props, chart_series, health_checks, sprinkler_state
 
 
@@ -41,11 +42,7 @@ def refresh(_):
 
     for z in zone_ids:
         i = info(z)
-        sp = (i.get("sprinkler") or {}).get("state")
-        rain = i.get("rain")
-
-        col["card"].append("zone" + (" raining" if rain == "on" else "")
-                           + (" watering" if sp == "on" else ""))
+        col["card"].append(weather_class(i))
 
         s_color, s_variant, s_pulse = sprinkler_state(i)
         col["sp_color"].append(s_color)
@@ -103,6 +100,7 @@ def open_zone(_):
     Output("zone-modal-chart", "referenceAreas"),
     Output("zone-modal-decision", "children"),
     Output("zone-modal-facts", "children"),
+    Output("zone-modal-card", "className"),
     Input("tick", "n_intervals"),
     Input("expanded-zone", "data"),
     State("zone-modal", "opened"),
@@ -115,7 +113,8 @@ def refresh_modal(_, zone, opened):
     i = zones.get(zone) or {"zone": zone}
     data, lines, areas = chart_props(zone)
     return (modal_title(zone, i), zone_hero(i, big=True), data, chart_series(zone),
-            lines, areas, decision_row(i, big=True), zone_facts(zone, i, big=True))
+            lines, areas, decision_row(i, big=True), zone_facts(zone, i, big=True),
+            weather_class(i, "zone zone-modal"))
 
 
 # ---- popup panels: status popover + log modal -------------------------------

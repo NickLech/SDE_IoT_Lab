@@ -7,6 +7,27 @@ from viewmodel import (air_text, chart_series, command_text, decision_info,
                        sprinkler_state, spread_text, vpd_text)
 
 
+def weather_layers():
+    """Rain / sky (fog + sun) / ground layers, shared by the zone cards and the
+    fullscreen modal. Use as the FIRST children of an element with class `zone`."""
+    return [
+        html.Div(className="rain-layer"),
+        html.Div(className="sky", children=[
+            html.Div(className="fog fog-a"),
+            html.Div(className="fog fog-b"),
+            html.Div(className="fog fog-c"),
+        ]),
+        html.Div(className="ground"),
+    ]
+
+
+def weather_class(info, base="zone"):
+    """`base` plus the state classes that drive the weather CSS."""
+    sprinkler = (info.get("sprinkler") or {}).get("state")
+    return (base + (" raining" if info.get("rain") == "on" else "")
+            + (" watering" if sprinkler == "on" else ""))
+
+
 def fact(label, value, icon=None, big=False):
     return dmc.Paper(
         p="sm" if big else "xs", radius="md", bg="var(--mantine-color-gray-0)",
@@ -41,13 +62,13 @@ def zone_hero(info, big=False):
     thr = (info.get("decision") or {}).get("soil_threshold")
 
     if median is None:
-        return [dmc.Badge("median soil moisture", color="gray", variant="light",
+        return [dmc.Badge("avg. soil moisture", color="gray", variant="light",
                           size="xl" if big else "md")]
 
     moisture = dmc.Badge(
         dmc.Group(gap=6, wrap="nowrap", align="center", children=[
             dmc.Text(f"{median:.0f}%", size="xl" if big else "md", fw=700),
-            dmc.Text("median soil moisture", size="sm" if big else "xs", c="dimmed"),
+            dmc.Text("avg. soil moisture", size="sm" if big else "xs", c="dimmed"),
         ]),
         color="blue", variant="light", size="xl" if big else "lg",
     )
@@ -117,13 +138,7 @@ def zone_card(zone):
         id={"type": "zone-card", "zone": zone},
         className="zone", withBorder=True, radius=RADIUS, shadow="sm", p="md", pb="lg",
         children=[
-            html.Div(className="rain-layer"),
-            html.Div(className="sky", children=[
-                html.Div(className="fog fog-a"),
-                html.Div(className="fog fog-b"),
-                html.Div(className="fog fog-c"),
-            ]),
-            html.Div(className="ground"),
+            *weather_layers(),
             dmc.Stack(gap="xs", children=[
                 dmc.Group(justify="space-between", wrap="nowrap", children=[
                     dmc.Text(zone.replace("zone", "Zone #"), fw=700, size="lg"),

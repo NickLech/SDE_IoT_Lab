@@ -39,7 +39,7 @@ def _step(n, title, formula, note):
 def _model_paper():
     return dmc.Card(withBorder=True, radius=RADIUS, padding="md", mt="sm", mb="sm", shadow="sm",
                 w="100%", className="lift", children=dmc.Stack([
-            dmc.Text("Irrigation model", fw=600, size="sm"),
+            dmc.Text("Irrigation model", fw=600, size="lg"),
             dmc.SimpleGrid(cols={"base": 1, "md": 3}, spacing="md", children=[
                 _step(1, "Saturation pressure",
                       r"\displaystyle e_s(T)=0.6108\,\exp\!\Big(\frac{17.27\,T}{T+237.3}\Big)\;[\mathrm{kPa}]",
