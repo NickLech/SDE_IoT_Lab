@@ -129,7 +129,10 @@ def zone_chart(id_, zone, height):
         id=id_, h=height, data=[], dataKey="t", series=chart_series(zone),
         curveType="natural", withDots=False, withLegend=False, unit="%",
         yAxisProps={"domain": [0, 100]}, referenceLines=[], referenceAreas=[],
-        gridAxis="y", areaProps={"strokeWidth": 3}, lineProps={"strokeWidth": 1},
+        gridAxis="y",
+        # recharts replays its draw animation on every data update (every second): off.
+        areaProps={"strokeWidth": 3, "isAnimationActive": False},
+        lineProps={"strokeWidth": 1, "isAnimationActive": False},
     )
 
 
