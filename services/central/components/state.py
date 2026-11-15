@@ -8,8 +8,8 @@ from components.config import ZONES
 lock = threading.Lock()
 soil = {}                                   # (zone, sensor_id) -> (value, received_at)
 status = {}                                 # (zone, sensor_id) -> "online" | "offline"
-temp = {}                                   # zone -> deque[(degC, received_at)]   HTTP pull
-humid = {}                                  # zone -> deque[(%RH, received_at)]    HTTP pull
+temp = {}                                   # zone -> deque[(degC, received_at)]   HTTP pull            -  contains the last N (now 3) samples, used to compute median and filter spikes
+humid = {}                                  # zone -> deque[(%RH, received_at)]    HTTP pull            -  contains the last N (now 3) samples, used to compute median and filter spikes
 sprinkler = {z: {"state": None, "until": None} for z in ZONES}
 sprinkler_status = {z: None for z in ZONES}   # "online"|"offline": liveness, independent of on/off
 rain = {z: None for z in ZONES}

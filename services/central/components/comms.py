@@ -1,4 +1,4 @@
-"""Communication with the other nodes, in one file but two separate sections:
+"""Communication with the other nodes. Two separate sections:
 
   1. MQTT  (push)  soil sensors, sprinkler state/commands, rain  +  our own sprinkler commands
   2. HTTP  (pull)  air temperature and humidity services
