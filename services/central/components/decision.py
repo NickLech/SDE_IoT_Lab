@@ -20,6 +20,15 @@ def soil_threshold(kpa):
 def decide(zone, view, now, mqtt_up, last_cmd):
     """Returns (action, reason, soil_threshold, duration_s); action is "on", "off" or None.
     last_cmd: zone -> monotonic time of the last command (ours or manual), used for the cooldown."""
+
+
+    # TODO: add the exercise here if we want to implement the exercise 3 as a change in the decision logic. 
+    #       For example, we could add a new parameter to the decide function that indicates whether the exercise is active or not, and then modify the decision logic accordingly.
+    #       fused soil estimate + VPD → sprinkler command. --> this is already implemented in the current logic (we can change it though :) ) 
+
+
+
+    # here we read the values in the current view
     soil_v = view["soil"]["median"]
     kpa = view["vpd"]["kpa"] if view["vpd"] else None
     thr = soil_threshold(kpa)
