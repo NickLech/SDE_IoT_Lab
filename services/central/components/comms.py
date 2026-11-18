@@ -1,4 +1,4 @@
-"""Communication with the other nodes, in one file but two separate sections:
+"""Communication with the other nodes. Two separate sections:
 
   1. MQTT  (push)  soil sensors, sprinkler state/commands, rain  +  our own sprinkler commands
   2. HTTP  (pull)  air temperature and humidity services
@@ -122,8 +122,17 @@ def poll_loop():
     failing = set()
     while True:
         for zone in ZONES:
+            # ---------------------------------------------------------------------------------
+            # EXERCISE 1 - HTTP pull
+            # Each sensor type is a tuple: (name, where to store the readings, base URL).
+            # The temperature one is done. TODO: add the humidity one, following the same pattern
+            # (it stores into `state.humid` and uses `HUMIDITY_URL`).
+            # Done when: the HTTP panel is green for both temperature and humidity.
+            # ---------------------------------------------------------------------------------
             for name, store, base in (("temperature", state.temp, TEMPERATURE_URL),
-                                      ("humidity", state.humid, HUMIDITY_URL)):
+                                      # <-- your humidity tuple goes here
+                                      ):
+            # ---------------------------------------------------------------------------------
                 url = f"{base.format(zone=zone)}/zones/{zone}/{name}"
                 try:
                     with urllib.request.urlopen(url, timeout=HTTP_TIMEOUT_S) as resp:

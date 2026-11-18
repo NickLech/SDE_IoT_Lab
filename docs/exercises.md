@@ -1,9 +1,11 @@
 # Exercises
 
-## Example/Exercise 1 — HTTP pull
-Complete `pull.py`: `GET` the temperature and humidity sensor of every zone.
-1. Handle errors when a container is stopped (`docker compose stop temperature`): timeout, retry/backoff, "unavailable" value.
-2. Count useless requests (unchanged value or sensor down) and log it.
+# EXERCISE 1 - HTTP pull
+--> SDE_IoT_Lab\services\central\components\comms.py
+            # Each sensor type is a tuple: (name, where to store the readings, base URL).
+            # The temperature one is done. TODO: add the humidity one, following the same pattern
+            # (it stores into `state.humid` and uses `HUMIDITY_URL`).
+            # Done when: the HTTP panel is green for both temperature and humidity.
 
 **Done when**: the HTTP panel turns green and `central` survives stopping/restarting the sensor.
 
