@@ -3,6 +3,7 @@ from dash import html
 
 from core import RADIUS
 from components.zone_card import decision_row, weather_layers, zone_chart, zone_facts
+from components.assignment import assignment   # <-- NUOVO (sostituisce la vecchia def)
 
 
 def zone_modal():
@@ -41,11 +42,3 @@ def log_drawer():
                 children="waiting for messages…")),
         ],
     )
-
-
-def assignment():
-    return dmc.Accordion(variant="contained", radius=RADIUS, className="lift", children=
-        dmc.AccordionItem(value="fusion", children=[
-            dmc.AccordionControl(dmc.Text("Assignment", fw=600, size="lg")),
-            dmc.AccordionPanel(),
-        ]))
