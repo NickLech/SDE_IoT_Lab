@@ -42,6 +42,13 @@ Without the script: `docker compose exec zone2 zonectl stop soil-2`.
 
 A stopped soil sensor or sprinkler publishes `offline` (retained), so the dashboard shows it immediately. Temperature and humidity are pulled over HTTP: they become unavailable after ~15 s. A crashed process restarts by itself; one you stopped by hand stays stopped.
 
+Reminder: in case of `permission denied`, allow the execution permission with: 
+```bash
+chmod +x ctl.sh
+```
+
+Without the script: `docker compose exec zone2 zonectl stop soil-2`.
+
 ## Addresses
 - Dashboard (field view + MQTT log): http://localhost:8050 — try the sprinkler command below and watch zone 1
 - Central API: http://localhost:5100/zones (also `/zones/zone1`, `/health`)

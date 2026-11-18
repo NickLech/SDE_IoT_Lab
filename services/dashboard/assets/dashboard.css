@@ -1,7 +1,7 @@
 /* Only what Mantine can't express: page canvas + the zone-card weather
    (sun when dry, rain when raining, glow when the sprinkler is on). */
 
-html { background: #eef1f6; }
+html { background: #eef1f6; }     /* nightmode? -->  111827  */
 body { background: transparent !important; }
 body::before {
   content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
