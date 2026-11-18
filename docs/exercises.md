@@ -9,10 +9,25 @@
 
 **Done when**: the HTTP panel turns green and `central` survives stopping/restarting the sensor.
 
+**Solution**
+for name, store, base in (("temperature", state.temp, TEMPERATURE_URL),
+                          ("humidity", state.humid, HUMIDITY_URL)):
+
 ## Example/Exercise 2 — MQTT push
-Complete `subscribe.py`: subscribe with a wildcard (`field/+/soil/+`) and fill in `on_message` (parse JSON, store the last reading per sensor).
+--> SDE_IoT_Lab\services\central\components\comms.py
+    # EXERCISE 2 - MQTT push
+    # The soil sensors publish by themselves on  field/<zone>/soil/<sensor_id>.
+    # TODO: subscribe to the soil readings of ALL zones and ALL sensors with ONE topic,
+    #       using the single-level wildcard "+" (QoS 1), as done for the other topics below.
+    # Done when: the MQTT panel is green and the 9 soil sensors show up.
 
 **Done when**: the MQTT panel turns green and the 9 soil sensors show up.
+
+**Solution**
+("field/+/soil/+", 1),
+
+client.subscribe([("field/+/soil/+", 1), ("field/+/soil/+/status", 1), ("field/+/sprinkler/state", 1),
+                  ("field/+/sprinkler/status", 1), ("field/+/sprinkler/cmd", 1), ("field/+/rain/state", 1)])
 
 ## Example 3 — Irrigation decision (guided)
 Fill in the TODOs of `decision.py::decide_irrigation(zone_state)` together: fused soil estimate + VPD → sprinkler command.

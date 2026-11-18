@@ -32,8 +32,16 @@ log = logging.getLogger("central.comms")
 
 def on_connect(client, userdata, flags, reason_code, properties):
     log.info("connected to broker (%s)", reason_code)
-    client.subscribe([("field/+/soil/+", 1), ("field/+/soil/+/status", 1), ("field/+/sprinkler/state", 1),
+    # ---------------------------------------------------------------------------------
+    # EXERCISE 2 - MQTT push
+    # The soil sensors publish by themselves on  field/<zone>/soil/<sensor_id>.
+    # TODO: subscribe to the soil readings of ALL zones and ALL sensors with ONE topic,
+    #       using the single-level wildcard "+" (QoS 1), as done for the other topics below.
+    # Done when: the MQTT panel is green and the 9 soil sensors show up.
+    # ---------------------------------------------------------------------------------
+    client.subscribe([("field/+/soil/+/status", 1), ("field/+/sprinkler/state", 1),
                       ("field/+/sprinkler/status", 1), ("field/+/sprinkler/cmd", 1), ("field/+/rain/state", 1)])
+
     state.connected.set()
 
 
