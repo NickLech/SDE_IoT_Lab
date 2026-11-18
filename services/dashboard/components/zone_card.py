@@ -28,7 +28,11 @@ def weather_class(info, base="zone"):
             + (" watering" if sprinkler == "on" else ""))
 
 
-def fact(label, value, icon=None, big=False):
+def fact(label, value, icon=None, big=False, color=None):
+    value_props = {"ta": "right"}
+    if color:
+        value_props["c"] = color      # only set c when there's a real color
+
     return dmc.Paper(
         p="sm" if big else "xs", radius="md", bg="var(--mantine-color-gray-0)",
         children=dmc.Group(justify="space-between", wrap="nowrap", gap="xs", children=[
@@ -36,7 +40,7 @@ def fact(label, value, icon=None, big=False):
                 *([DashIconify(icon=icon, width=20 if big else 16)] if icon else []),
                 dmc.Text(label, size="sm" if big else "xs", c="dimmed", fw=600, tt="uppercase"),
             ]),
-            dmc.Text(value, size="sm" if big else "xs", ta="right"),
+            dmc.Text(value, size="sm" if big else "xs", **value_props),
         ]),
     )
 
@@ -46,8 +50,10 @@ def zone_facts(zone, info, big=False):
         watered = water_s.get(zone, 0.0)
     h, rem = divmod(int(watered), 3600)
     m, s = divmod(rem, 60)
+    air = air_text(info)
+    air_color = "red" if "humidity missing" in air else None
     return [
-        fact("air", air_text(info), "tabler:temperature", big),
+        fact("air", air, "tabler:temperature", big, color=air_color),
         fact("VPD", vpd_text(info), "tabler:droplet", big),
         fact("agreement", spread_text(info), "tabler:activity", big),
         (fact("watered", f"{h:02d} h {m:02d} min {s:02d} s", "tabler:history", big) if h > 0 
