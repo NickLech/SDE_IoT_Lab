@@ -1,7 +1,7 @@
-"""Communication with the other nodes. Two separate sections:
+"""Communication with the other nodes. Two concerns:
 
-  1. MQTT  (push)  soil sensors, sprinkler state/commands, rain  +  our own sprinkler commands
-  2. HTTP  (pull)  air temperature and humidity services
+  MQTT  (push)  soil sensors, sprinkler state/commands, rain  +  our own sprinkler commands
+  HTTP  (pull)  air temperature and humidity services
 
 It only moves data in and out of `state`; no fusion or decision logic here.
 """
@@ -32,14 +32,13 @@ log = logging.getLogger("central.comms")
 
 def on_connect(client, userdata, flags, reason_code, properties):
     log.info("connected to broker (%s)", reason_code)
-    # ---------------------------------------------------------------------------------
-    # EXERCISE 2 - MQTT push
-    # The soil sensors publish by themselves on  field/<zone>/soil/<sensor_id>.
-    # TODO: subscribe to the soil readings of ALL zones and ALL sensors with ONE topic,
-    #       using the single-level wildcard "+" (QoS 1), as done for the other topics below.
-    # Done when: the MQTT panel is green and the 9 soil sensors show up.
-    # ---------------------------------------------------------------------------------
-    client.subscribe([("field/+/soil/+/status", 1), ("field/+/sprinkler/state", 1),
+    # Exercise 2 — MQTT push
+    # Soil sensors publish their readings on field/<zone>/soil/<sensor_id>.
+    # TODO: subscribe to all soil values with a single wildcard topic (QoS 1),
+    #       following the pattern of the topics below.
+    # Hint: "field/+/soil/+" has 4 levels; the /status topics stay separate.
+    # Done when: the MQTT panel is green and all 9 soil sensors appear.
+    client.subscribe([("field/+/soil/+", 1), ("field/+/soil/+/status", 1), ("field/+/sprinkler/state", 1),
                       ("field/+/sprinkler/status", 1), ("field/+/sprinkler/cmd", 1), ("field/+/rain/state", 1)])
 
     state.connected.set()
@@ -130,17 +129,14 @@ def poll_loop():
     failing = set()
     while True:
         for zone in ZONES:
-            # ---------------------------------------------------------------------------------
-            # EXERCISE 1 - HTTP pull
-            # Each sensor type is a tuple: (name, where to store the readings, base URL).
-            # The temperature one is done. TODO: add the humidity one, following the same pattern
-            # (it stores into `state.humid` and uses `HUMIDITY_URL`).
+            # Exercise 1 — HTTP pull (humidity)
+            # Each sensor type is a tuple: (name, target store, base URL).
+            # TODO: add the humidity tuple, following the temperature pattern
+            #       (it stores into `state.humid` and uses `HUMIDITY_URL`).
             # Done when: the HTTP panel is green for both temperature and humidity.
-            # ---------------------------------------------------------------------------------
             for name, store, base in (("temperature", state.temp, TEMPERATURE_URL),
-                                      # <-- your humidity tuple goes here
+                                      ("humidity", state.humid, HUMIDITY_URL),  # solution
                                       ):
-            # ---------------------------------------------------------------------------------
                 url = f"{base.format(zone=zone)}/zones/{zone}/{name}"
                 try:
                     with urllib.request.urlopen(url, timeout=HTTP_TIMEOUT_S) as resp:

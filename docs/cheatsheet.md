@@ -104,6 +104,7 @@ mosquitto_sub -h localhost -t 'field/+/soil/+' -v
 - _Changes not applied_: `docker compose up --build`.
 
 ## Files to edit
-- Exercise 1: `services/central/pull.py`
-- Exercise 2: `services/central/subscribe.py`
-- Exercise 3/4: `services/central/decision.py`
+- Exercise 1 (HTTP pull): `services/central/components/comms.py` → `poll_loop()`
+- Exercise 2 (MQTT push): `services/central/components/comms.py` → `on_connect()`
+- Exercise 3 (data fusion): `services/central/components/fusion.py` → `vpd_kpa()`
+- Assignment: `services/dashboard/components/assignment.py`

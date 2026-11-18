@@ -1,31 +1,40 @@
 """Data fusion (pure functions, no I/O): soil sensors + air temperature/humidity -> one view per zone, with VPD.
 
-  VPD = SVP(leaf) - SVP(air) * RH/100        (kPa, Tetens/Magnus formula)
+  Target formula (shown on the dashboard toolbar):
+      es(T) = 0.6108 * exp(17.27 * T / (T + 237.3))      saturation vapour pressure, kPa
+      VPD   = es(T) * (1 - RH / 100)                     vapour pressure deficit, kPa
 """
 import math
 import statistics
 
-from components.config import (AIR_STALE_AFTER_S, LEAF_TEMP_OFFSET, SENSOR_IDS, STALE_AFTER_S, SUSPECT_DELTA,
+from components.config import (AIR_STALE_AFTER_S, SENSOR_IDS, STALE_AFTER_S, SUSPECT_DELTA,
                                VPD_HIGH, VPD_LOW, VPD_OK, VPD_STRESS, ZONES)
 
 
 # ------------------------------------------------------------------------------------- VPD
-def svp_kpa(t_c):
-    """Saturation vapor pressure (kPa), Tetens/Magnus formula."""
-    return 0.6108 * math.exp(17.27 * t_c / (t_c + 237.3))
+# Exercise 3 — Data fusion (VPD)
+# Target model (also shown in the dashboard toolbar, "Irrigation model"):
+#     es(T) = 0.6108 * exp(17.27 * T / (T + 237.3))   [kPa]  saturation vapour pressure
+#     VPD   = es(T) * (1 - RH / 100)                  [kPa]
+# TODO: replace the placeholder with that model: compute es(T) from `t_c` (math.exp is
+#       already imported), then subtract the actual vapour pressure of the air, es(T) * rh / 100.
+# Hint: the placeholder ignores `t_c` entirely — it is humidity-only, so it keeps the
+#       dashboard working (VPD fact + band) until the exercise is done.
+# Done when: the VPD fact changes with the air temperature, e.g. T = 25 °C and RH = 50 %
+#            -> 1.584 kPa (the placeholder gives 1.000 kPa).
+def vpd_kpa(t_c, rh):
+    """Vapor pressure deficit (kPa). PLACEHOLDER: humidity only, temperature ignored."""
+    return max(0.0, 2.0 * (1 - rh / 100))
 
 
-def vpd_kpa(t_c, rh, leaf_offset=0.0):
-    """Vapor pressure deficit (kPa) = SVP(leaf) - actual vapor pressure of the air."""
-    return max(0.0, svp_kpa(t_c - leaf_offset) - svp_kpa(t_c) * rh / 100)
+def vpd_band(vpd):
+    """"Qualitative band for a VPD value (kPa), using the thresholds from config.py.
 
-
-def vpd_band(vpd):          
-    """ This only says that these are the values:  
-                                                < 0.4 kPa (too humid)
-                                                0.4 to 0.8 kPa   &  1.2 to 1.6 kPa (ok)
-                                                0.8 to 1.2 kPa (optimal)
-                                                > 1.6 kPa (too dry)
+    < VPD_LOW 0.4        -> too humid ("low")
+    0.4 .. 0.8           -> ok
+    0.8 .. 1.2           -> optimal
+    1.2 .. 1.6           -> ok
+    > 1.6                -> too dry ("stress")
     """
     if vpd < VPD_LOW:
         return "low"
@@ -68,8 +77,8 @@ def build_view(now, soil_c, status_c, temp_c, humid_c, sprinkler_c, sprinkler_st
         t, rh = fresh(temp_c, zone, -40, 60, now), fresh(humid_c, zone, 0, 100, now)
         vpd = None
         if t is not None and rh is not None:
-            kpa = vpd_kpa(t, rh, LEAF_TEMP_OFFSET)
-            vpd = {"kpa": round(kpa, 3), "band": vpd_band(kpa), "leaf_offset_c": LEAF_TEMP_OFFSET}
+            kpa = vpd_kpa(t, rh)
+            vpd = {"kpa": round(kpa, 3), "band": vpd_band(kpa)}
 
         sp = sprinkler_c[zone]
         # Liveness wins over the last retained on/off: the device may be gone while its last state

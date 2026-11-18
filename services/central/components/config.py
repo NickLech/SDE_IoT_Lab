@@ -29,7 +29,6 @@ VPD_LOW = float(os.environ.get("VPD_LOW", 0.4))
 VPD_OK = float(os.environ.get("VPD_OK", 0.8))                                 # now... this naming (ok) also comprehend values from 1.2 to 1.6, the logic is in "vpd_band()" in fusion.py
 VPD_HIGH = float(os.environ.get("VPD_HIGH", 1.2))
 VPD_STRESS = float(os.environ.get("VPD_STRESS", 1.6))
-LEAF_TEMP_OFFSET = float(os.environ.get("LEAF_TEMP_OFFSET", 0))               # leaf is this many degC colder than air
 
 # ---- irrigation decision
 SOIL_DRY_BASE = float(os.environ.get("SOIL_DRY_BASE", 35))                    # % : irrigate below this (VPD = VPD_REF)

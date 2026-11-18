@@ -31,18 +31,17 @@ log = logging.getLogger("assignment")
 
 
 # ============================================================================
-# TODO 1 - your name and surname (strings, e.g. "Ada")
+# TODO 1: your name and surname (strings, e.g. "Ada")
 # ============================================================================
 STUDENT_NAME = "Pat"
 STUDENT_SURNAME = "Il Boss"
 
 # ============================================================================
-# TODO 2 - MQTT topic of the rain state of the zone (QoS 1, retained)
-# Complete the f-string: field/<zone>/....
-# The payload is {"state": "on" | "off"}
+# TODO 2: MQTT topic of the rain state of the zone (QoS 1, retained)
+# Pattern: field/<zone>/rain/state — payload {"state": "on" | "off"}
 # ============================================================================
 ZONE = "zone1"
-RAIN_TOPIC = f"field/{ZONE}/rain/state"   # f"field/{ZONE}/...."
+RAIN_TOPIC = f"field/{ZONE}/rain/state"
 
 
 # ---------------------------------------------------------------------------
@@ -117,8 +116,7 @@ def read_temperature():
     The service answers GET /zones/<zone>/temperature with
     {"zone": ..., "sensor_id": ..., "value": 14.0, "unit": "C", "timestamp": ...}
     """
-    # TODO 3: complete the URL of the request (replace the `....` at the end)
-    #with urllib.request.urlopen(f"{TEMPERATURE_URL}/zones/{ZONE}/....", timeout=HTTP_TIMEOUT_S) as r:
+    # TODO 3: complete the URL of the request — GET /zones/<zone>/temperature
     with urllib.request.urlopen(f"{TEMPERATURE_URL}/zones/{ZONE}/temperature", timeout=HTTP_TIMEOUT_S) as r:
         return float(json.load(r)["value"])
 
@@ -179,7 +177,7 @@ def assignment():
                             id="asg-temp-chart", h=220, data=[], dataKey="t",
                             series=[{"name": "temperature", "color": "orange.6"}],
                             curveType="natural", withDots=False, withLegend=False,
-                            unit="°C", gridAxis="y", yAxisProps={"domain": [0, 25]},
+                            unit="°C", gridAxis="y", yAxisProps={"domain": [0, 32]},
                             lineProps={"strokeWidth": 2, "isAnimationActive": False},
                         ),
                     ]),
