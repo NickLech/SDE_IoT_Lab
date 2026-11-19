@@ -163,8 +163,8 @@ with urllib.request.urlopen(f"{TEMPERATURE_URL}/zones/{ZONE}/temperature", timeo
     return float(json.load(r)["value"])
 ```
 
-**Done when**: the green banner appears, the temperature line moves, 
-and the rain line follows the rain service being switched on/off.
+**Done when**: the header badge turns green ("Completed"), the green banner appears,
+the temperature line moves, and the rain line follows the rain service being switched on/off.
 
 ---
 
