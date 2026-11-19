@@ -33,8 +33,8 @@ log = logging.getLogger("assignment")
 # ============================================================================
 # TODO 1: your name and surname (strings, e.g. "Ada")
 # ============================================================================
-STUDENT_NAME = "Pat"
-STUDENT_SURNAME = "Il Boss"
+STUDENT_NAME = "x"
+STUDENT_SURNAME = "x"
 
 # ============================================================================
 # TODO 2: MQTT topic of the rain state of the zone (QoS 1, retained)
@@ -182,7 +182,7 @@ def assignment():
                         ),
                     ]),
                     dmc.Stack(gap="xs", children=[
-                        dmc.Text(f"Rain ({ZONE}): 1 = raining, 0 = dry", fw=600, size="sm"),
+                        dmc.Text(f"Rain ({ZONE}): 1 = raining, 0 = sunny", fw=600, size="sm"),
                         dmc.LineChart(
                             id="asg-rain-chart", h=220, data=[], dataKey="t",
                             series=[{"name": "rain", "color": "cyan.6"}],
@@ -213,7 +213,7 @@ def refresh_assignment(_):
     banner = None
     if done and name:
         banner = dmc.Alert(
-            f"{name} Good job, now you can monitor the field!",
+            f"{name} Good job, now you can monitor {ZONE} of the field!",
             color="green", variant="light", radius=RADIUS, fw=600,
             icon=DashIconify(icon="tabler:circle-check", width=22),
         )
