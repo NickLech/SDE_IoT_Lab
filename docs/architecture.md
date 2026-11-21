@@ -176,7 +176,7 @@ All values above are environment variables of `central` (`services/central/compo
 | 1 | HTTP pull | `services/central/components/comms.py` → `poll_loop()` | air temperature and humidity of each zone |
 | 2 | MQTT push | `services/central/components/comms.py` → `on_connect()` | soil readings of the 9 sensors |
 | 3 | Data fusion | `services/central/components/fusion.py` → `vpd_kpa()` | VPD and its band |
-| Assignment | Monitor one zone | `services/dashboard/components/assignment.py` | temperature (HTTP) and rain (MQTT) charts of one zone |
+| Assignment | Monitor one zone | `services/dashboard/assignment/monitor.py` | temperature (HTTP) and rain (MQTT) charts of one zone |
 
 ## Dashboard
 
@@ -184,7 +184,7 @@ All values above are environment variables of `central` (`services/central/compo
 - One card per zone: soil median, air, VPD, agreement of the soil sensors, sprinkler state, decision and watered time.
 - A status panel with health checks and a pill that says `LIVE` or `n issue(s)` (red when something is missing, e.g. humidity data).
 - An MQTT log (`field/#`, `debug/#`) and a rain toggle that publishes `field/rain/mode`.
-- The **Assignment** panel runs its own MQTT client and its own HTTP polling (zone1), independent from `central`.
+- The **Assignment** panel runs its own MQTT client and its own HTTP polling (zone1), independent from `central`. Its code is self-contained in `services/dashboard/assignment/`: `monitor.py` (the student TODOs inside that HTTP/MQTT client), `grading.py` (validation).
 
 ## Repository layout
 
@@ -204,5 +204,5 @@ services/
   sprinkler/              actuator (MQTT)                -- copied into the zone image
   rain/                   global rain simulator (MQTT)
   central/                app.py + components/ (comms, state, fusion, decision, control, api, config)
-  dashboard/              Dash app (components/, callbacks.py, viewmodel.py, assets/)
+  dashboard/              Dash app (assignment/, components/, callbacks.py, viewmodel.py, assets/)
 ```

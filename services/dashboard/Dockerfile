@@ -8,6 +8,7 @@ COPY requirements.txt .
 RUN pip install -r requirements.txt
 
 COPY app.py core.py viewmodel.py callbacks.py ./
+COPY assignment/ ./assignment/
 COPY components/ ./components/
 COPY assets/ ./assets/
 RUN useradd --system --no-create-home dash

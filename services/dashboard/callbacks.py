@@ -7,10 +7,12 @@ from dash import ALL, Input, Output, State, callback, ctx
 from dash.exceptions import PreventUpdate
 
 import core
+from assignment import grading, monitor
+from components.assignment import badge_state, status_alert
 from components.header import status_rows
 from components.zone_card import (decision_row, modal_title, weather_class,
                                   zone_facts, zone_hero)
-from viewmodel import chart_props, chart_series, health_checks, sprinkler_state
+from viewmodel import chart_props, chart_series, gradient_stops, health_checks, sprinkler_state
 
 
 @callback(
@@ -189,7 +191,7 @@ def clear_history(_):
 def rain_override(mode):
     color = {"auto": "green", "dry": "orange", "rain": "cyan"}.get(mode, "gray")
     if core.connected.is_set():
-        # the rain service reads this topic to know whether it owns the state
+        # il servizio legge questo topic per sapere se deve comandare lui
         core.client.publish("field/rain/mode", json.dumps({"mode": mode}),
                             qos=1, retain=True)
         if mode != "auto":
@@ -199,3 +201,28 @@ def rain_override(mode):
                 core.client.publish(f"field/{z}/rain/state", payload,
                                     qos=1, retain=True)
     return color
+
+# ---- assignment panel --------------------------------------------------------
+
+@callback(
+    Output("asg-banner", "children"),
+    Output("asg-temp-chart", "data"),
+    Output("asg-temp-chart", "gradientStops"),
+    Output("asg-rain-chart", "data"),
+    Output("asg-badge", "children"),
+    Output("asg-badge", "color"),
+    Output("asg-badge", "leftSection"),
+    Input("asg-tick", "n_intervals"),
+)
+def refresh_assignment(_):
+    """Charts + completion banner/badge of the Assignment panel (the exercise check).
+
+    Data comes from the exercise client (assignment/monitor.py), the verdict
+    from assignment/grading.py; the view pieces from components/assignment.py.
+    """
+    temp, rain, temp_ok = monitor.snapshot()
+    name = grading.full_name(monitor.STUDENT_NAME, monitor.STUDENT_SURNAME)
+    missing = grading.missing_todos(name, monitor.ZONE, monitor.RAIN_TOPIC, temp_ok)
+    return (status_alert(name, missing),
+            temp, gradient_stops([p["temperature"] for p in temp]), rain,
+            *badge_state(missing))

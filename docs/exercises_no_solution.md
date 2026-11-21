@@ -9,7 +9,7 @@ Three implementation exercises plus one assignment. Each one feeds a panel of th
 | 1 | HTTP pull | `services/central/components/comms.py` | `poll_loop()` |
 | 2 | MQTT push | `services/central/components/comms.py` | `on_connect()` |
 | 3 | Data fusion | `services/central/components/fusion.py` | `vpd_kpa()` |
-| Assignment | Monitor one zone | `services/dashboard/components/assignment.py` | TODOs 1–3 |
+| Assignment | Monitor one zone | `services/dashboard/assignment/monitor.py` | TODOs 1–3 |
 
 Apply every change by rebuilding the stack:
 
@@ -106,7 +106,7 @@ curl -s localhost:5100/zones | python3 -m json.tool
 
 ## Assignment — monitor one zone
 
-**File**: `services/dashboard/components/assignment.py`
+**File**: `services/dashboard/assignment/monitor.py` (the TODOs are marked inside this one file)
 
 This panel watches a **single** zone: temperature over HTTP and rain over MQTT, each in its
 own chart. Three TODOs:
@@ -118,11 +118,11 @@ STUDENT_NAME = "Ada"
 STUDENT_SURNAME = "Lovelace"
 ```
 
-**TODO 2 — rain topic**: the retained rain-state topic of the zone, payload
+**TODO 2 — rain topic** (in the *Rain over MQTT* section): the retained rain-state topic of the zone, payload
 `{"state": "on" | "off"}`.
 
-Hint: `RAIN_TOPIC`, `_EXPECTED_RAIN_TOPIC` and the broker's retained message must agree,
-otherwise the rain chart stays empty.
+Hint: `RAIN_TOPIC` must be exactly that topic — the panel ignores messages received on
+any other topic, so with a wrong `RAIN_TOPIC` the rain chart stays empty.
 
 **TODO 3 — temperature URL**: complete the request inside `read_temperature()`.
 

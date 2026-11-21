@@ -146,3 +146,46 @@ def health_checks(zone_ids, info, central_up, mqtt_up):
     per_zone("Sprinklers (MQTT push)", lambda i: (i.get("sprinkler") or {}).get("state") in ("on", "off"))
     per_zone("Rain (MQTT push)", lambda i: i.get("rain") in ("on", "off"))
     return rows
+
+
+# ---- temperature line gradient (assignment panel) --------------------------
+
+# fixed color thresholds (°C -> color); hex values of red.6 / orange.6 / yellow.5
+# / lime.5 / cyan.5 / blue.5 (Mantine palette)
+TEMP_STOP_TABLE = [(30, "#fa5252"), (25, "#fd7e14"), (20, "#fab005"),
+                   (15, "#94d82d"), (10, "#3bc9db"), (5, "#4dabf7")]
+
+
+def color_at(temp):
+    """Color of the table piecewise-linearly interpolated at the given °C value."""
+    temp = max(5.0, min(30.0, temp))
+    for (t_hi, c_hi), (t_lo, c_lo) in zip(TEMP_STOP_TABLE, TEMP_STOP_TABLE[1:]):
+        if t_lo <= temp <= t_hi:
+            f = (temp - t_lo) / (t_hi - t_lo)
+            lo = [int(c_lo[i:i + 2], 16) for i in (1, 3, 5)]
+            hi = [int(c_hi[i:i + 2], 16) for i in (1, 3, 5)]
+            return "#" + "".join(f"{round(lo[i] + f * (hi[i] - lo[i])):02x}" for i in range(3))
+    return TEMP_STOP_TABLE[-1][1]
+
+
+def gradient_stops(values):
+    """Stops that link the line color to the ABSOLUTE temperature.
+
+    The SVG gradient has no gradientUnits, so it spans the curve's own
+    bounding box: offset 0 is the window maximum, 100 the window minimum.
+    To keep a pixel's color tied to its °C value, every threshold strictly
+    inside the current window gets a stop at offset = 100 * (wmax - T) / (wmax - wmin),
+    and the two window edges get the interpolated colors at wmax / wmin.
+    """
+    if not values:                                   # chart not fed yet: default ramp
+        ramp = ["#fa5252", "#fd7e14", "#fab005", "#94d82d", "#3bc9db", "#4dabf7"]
+        return [{"offset": o, "color": c} for o, c in zip([0, 25, 42, 62, 83, 100], ramp)]
+    wmax, wmin = max(values), min(values)
+    span = wmax - wmin
+    if span < 0.05:                                  # flat line: one solid color for its value
+        color = color_at(wmax)
+        return [{"offset": 0, "color": color}, {"offset": 100, "color": color}]
+    stops = [(0.0, color_at(wmax))]                  # color at the top of the curve
+    stops += [(100.0 * (wmax - t) / span, c) for t, c in TEMP_STOP_TABLE if wmin < t < wmax]
+    stops.append((100.0, color_at(wmin)))            # color at the bottom of the curve
+    return [{"offset": round(offset), "color": color} for offset, color in stops]

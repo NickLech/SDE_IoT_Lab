@@ -183,7 +183,7 @@ client.loop_forever()
 | 1 — HTTP pull | URL pattern `…/zones/<zone>/humidity`, field `value` | `services/central/components/comms.py` → `poll_loop()` | `air.humidity` is not `null` in `curl -s localhost:5100/zones` |
 | 2 — MQTT push | topic of the soil readings, wildcard `+`, QoS 1 | `services/central/components/comms.py` → `on_connect()` | `soil.valid` is 3 in every zone (9 sensors) |
 | 3 — Data fusion | VPD formula (see `exercises.md`) | `services/central/components/fusion.py` → `vpd_kpa()` | T = 25 °C, RH = 50 % gives `1.584` kPa |
-| Assignment | rain topic of one zone, temperature URL | `services/dashboard/components/assignment.py` | green banner, charts moving |
+| Assignment | rain topic of one zone, temperature URL | `services/dashboard/assignment/monitor.py` | green banner, charts moving |
 
 After every edit: `docker compose up --build`.
 
@@ -216,4 +216,4 @@ Things to try once the exercises work:
 - Exercise 1 (HTTP pull): `services/central/components/comms.py` → `poll_loop()`
 - Exercise 2 (MQTT push): `services/central/components/comms.py` → `on_connect()`
 - Exercise 3 (data fusion): `services/central/components/fusion.py` → `vpd_kpa()`
-- Assignment: `services/dashboard/components/assignment.py`
+- Assignment: `services/dashboard/assignment/monitor.py`

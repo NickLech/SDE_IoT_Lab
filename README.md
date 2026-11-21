@@ -47,7 +47,7 @@ Switch single devices on and off (to test failures) with `./ctl.sh`, for example
 | 1 | HTTP pull | `services/central/components/comms.py` → `poll_loop()` |
 | 2 | MQTT push | `services/central/components/comms.py` → `on_connect()` |
 | 3 | Data fusion (VPD) | `services/central/components/fusion.py` → `vpd_kpa()` |
-| Assignment | Monitor one zone | `services/dashboard/components/assignment.py` |
+| Assignment | Monitor one zone | `services/dashboard/assignment/monitor.py` |
 
 ## Repo layout
 
