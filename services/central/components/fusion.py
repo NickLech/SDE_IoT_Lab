@@ -18,13 +18,14 @@ from components.config import (AIR_STALE_AFTER_S, SENSOR_IDS, STALE_AFTER_S, SUS
 #     VPD   = es(T) * (1 - RH / 100)                  [kPa]
 # TODO: replace the placeholder with that model: compute es(T) from `t_c` (math.exp is
 #       already imported), then subtract the actual vapour pressure of the air, es(T) * rh / 100.
-# Hint: the placeholder ignores `t_c` entirely — it is humidity-only, so it keeps the
-#       dashboard working (VPD fact + band) until the exercise is done.
+# Hint: the placeholder ignores `t_c` entirely by setting a constant value — it is humidity-only, 
+#            so it keeps the dashboard working (VPD fact + band) until the exercise is done.
 # Done when: the VPD fact changes with the air temperature, e.g. T = 25 °C and RH = 50 %
 #            -> 1.584 kPa (the placeholder gives 1.000 kPa).
 def vpd_kpa(t_c, rh):
     """Vapor pressure deficit (kPa). PLACEHOLDER: humidity only, temperature ignored."""
-    return max(0.0, 2.0 * (1 - rh / 100))
+    es = 2.0      # TODO: add your code here
+    return max(0.0, es * (1 - rh / 100))
 
 
 def vpd_band(vpd):

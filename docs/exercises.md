@@ -97,14 +97,9 @@ then subtract the actual vapour pressure of the air, $es(T)\cdot RH/100$.
 **Solution**
 
 ```python
-def svp_kpa(t_c):
-    """Saturation vapour pressure (kPa) of water at t_c degrees C — Tetens/Magnus."""
-    return 0.6108 * math.exp(17.27 * t_c / (t_c + 237.3))
-
-
 def vpd_kpa(t_c, rh):
     """Vapour pressure deficit (kPa): es(T) * (1 - RH/100)."""
-    es = svp_kpa(t_c)
+    es = 0.6108 * math.exp(17.27 * t_c / (t_c + 237.3))
     return max(0.0, es * (1 - rh / 100))
 ```
 
