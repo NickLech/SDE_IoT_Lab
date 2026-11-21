@@ -1,5 +1,5 @@
-# Immagine di zona. Build context = radice del progetto (vedi docker-compose.yml),
-# così riusa gli app.py delle cartelle soil/ sprinkler/ temperature/ humidity/.
+# Per-zone image. Build context is the project root (see docker-compose.yml),
+# so it can reuse the app.py of each service folder.
 FROM python:3.12-slim
 
 ENV PYTHONUNBUFFERED=1 \
@@ -15,8 +15,9 @@ COPY services/humidity/app.py ./humidity/app.py
 COPY services/sprinkler/app.py ./sprinkler/app.py
 COPY services/zone/supervisord.conf /etc/supervisord.conf
 
-# stessi utenti dei Dockerfile originali: sensori = sensor, attuatore = actuator
-# (supervisord resta root solo per poter far partire ogni processo col suo utente)
+# Sensors run as "sensor", the actuator as "actuator"; supervisord stays root
+# only to start each process under its own user.
+# zonectl is a supervisorctl wrapper (used by ctl.sh).
 RUN useradd --system --no-create-home sensor \
     && useradd --system --no-create-home actuator \
     && printf '#!/bin/sh\nexec supervisorctl -c /etc/supervisord.conf "$@"\n' > /usr/local/bin/zonectl \

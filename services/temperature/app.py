@@ -1,14 +1,15 @@
-"""Temperature sensor of ONE zone, exposed over HTTP (pull).
+"""Temperature sensor of one zone, served over HTTP (pull).
 
-Env: ZONE (e.g. zone1), ZONE_INDEX (0-based, sets the +0.5 degC per zone offset), PORT (default 5001)
+Env: ZONE (e.g. zone1), ZONE_INDEX (0-based; adds ZONE_OFFSET degC per index), PORT (default 5001)
 
 GET /zones/<zone>/temperature
     -> {"zone": "zone1", "sensor_id": "temp-zone1", "value": 14.0, "unit": "C", "timestamp": "..."}
+GET /health -> {"status": "ok"}
 
-Daily sine cycle, one "day" = DAY_PERIOD_S seconds since the process started:
+Daily sine cycle; one "day" lasts DAY_PERIOD_S seconds from process start:
     17 + 0.5 * ZONE_INDEX + 12 * sin(2*pi*elapsed/DAY_PERIOD_S)   (clamped to 5..30)
-The wide 5..30 degC swing makes the temperature term of the VPD formula visible
-(e.g. 5 degC vs 30 degC at the same RH gives very different VPD bands).
+The wide 5..30 degC swing makes the temperature term of VPD visible: the same
+relative humidity gives very different VPD at 5 degC and at 30 degC.
 """
 import json
 import math
@@ -24,14 +25,14 @@ DAY_PERIOD_S = float(os.environ.get("DAY_PERIOD_S", 600))
 
 MIN_TEMPERATURE = 5.0
 MAX_TEMPERATURE = 30.0
-INITIAL_TEMPERATURE = 17.0          # centre such that zone1 bottoms at 5 and zone3 tops at 30
-TEMPERATURE_AMPLITUDE = 12.0        # (MAX - MIN - ZONE_OFFSET*(len(ZONES)-1)) / 2 = 12
+INITIAL_TEMPERATURE = 17.0          # cycle centre: zone1 bottoms at 5, zone3 tops at 30
+TEMPERATURE_AMPLITUDE = 12.0        # (MAX - MIN - 2 * ZONE_OFFSET) / 2
 ZONE_OFFSET = 0.5                   # zone2/zone3 run 0.5/1.0 degC hotter
 
 if DAY_PERIOD_S <= 0:
     raise ValueError("DAY_PERIOD_S must be greater than zero")
 
-START = time.monotonic()
+START = time.monotonic()            # monotonic: immune to wall-clock changes
 
 
 def now_iso():
@@ -65,7 +66,7 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def log_message(self, format, *args):
-        pass
+        pass  # silence per-request logging
 
 
 def main():

@@ -1,12 +1,13 @@
-"""Air-humidity sensor of ONE zone, exposed over HTTP (pull).
+"""Air-humidity sensor of one zone, served over HTTP (pull).
 
 Env: ZONE (e.g. zone1), PORT (default 5002)
 
 GET /zones/<zone>/humidity -> {"zone": "zone1", "value": 62.5, "unit": "%", "timestamp": "..."}
+GET /health                -> {"status": "ok"}
 
--DRY_STEP every tick, +WET_STEP for each active source (sprinkler of this zone, rain),
-clamped to MIN_HUMIDITY..MAX_HUMIDITY. Sources come from MQTT:
-field/<zone>/sprinkler/state and field/<zone>/rain/state.
+Each tick humidity drops by DRY_STEP and rises by WET_STEP for every active
+source (this zone's sprinkler, rain), clamped to MIN_HUMIDITY..MAX_HUMIDITY.
+Sources are tracked via MQTT: field/<zone>/sprinkler/state and field/<zone>/rain/state.
 """
 import json
 import os
@@ -32,8 +33,8 @@ MIN_HUMIDITY = 50.0
 MAX_HUMIDITY = 80.0
 
 humidity = INITIAL_HUMIDITY
-wet = {s: False for s in SOURCES}
-lock = threading.Lock()
+wet = {s: False for s in SOURCES}  # source -> currently active
+lock = threading.Lock()            # guards humidity and wet
 
 
 def now_iso():
@@ -46,7 +47,7 @@ def on_connect(client, userdata, flags, reason_code, properties):
 
 def on_message(client, userdata, msg):
     try:
-        source = msg.topic.split("/")[2]
+        source = msg.topic.split("/")[2]  # field/<zone>/<source>/state
         state = json.loads(msg.payload).get("state")
     except (ValueError, AttributeError, IndexError):
         return
@@ -85,7 +86,7 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def log_message(self, format, *args):
-        pass
+        pass  # silence per-request logging
 
 
 def main():
@@ -97,6 +98,7 @@ def main():
     threading.Thread(target=tick_loop, daemon=True).start()
 
     server = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
+    # shutdown() blocks until serve_forever() exits, so it must run in another thread
     signal.signal(signal.SIGTERM, lambda *_: threading.Thread(target=server.shutdown).start())
     print(f"humidity started: {ZONE}, port {PORT}", flush=True)
     server.serve_forever()

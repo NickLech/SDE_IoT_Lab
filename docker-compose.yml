@@ -1,5 +1,5 @@
-# Un container per zona (zone1..zone3): soil-1..3, temperature, humidity, sprinkler.
-# Pioggia globale (rain). Controllo dei singoli dispositivi: ./ctl.sh (vedi README).
+# One container per zone (zone1..zone3): soil-1..3, temperature, humidity, sprinkler.
+# Rain is global (rain service). Per-device control: ./ctl.sh (see README).
 x-zone: &zone
   build:
     context: .
@@ -26,15 +26,13 @@ services:
     restart: unless-stopped
 
   # ---- zone: 3 soil + temperature (HTTP :5001) + humidity (HTTP :5002) + sprinkler ----
-  # Porte host per il debug: zone1 5001/5002, zone2 5011/5012, zone3 5021/5022
+  # Host ports for debugging: zone1 5001/5002, zone2 5011/5012, zone3 5021/5022
   zone1:
     <<: *zone
     environment:
       MQTT_HOST: broker
       ZONE: zone1
       ZONE_INDEX: "0"
-      NOISE_STD: "0.4"      # come nel compose originale (letto solo se il servizio temperature lo supporta)
-      SPIKE_PROB: "0.02"
     ports:
       - "5001:5001"
       - "5002:5002"
@@ -45,8 +43,6 @@ services:
       MQTT_HOST: broker
       ZONE: zone2
       ZONE_INDEX: "1"
-      NOISE_STD: "0.4"
-      SPIKE_PROB: "0.02"
     ports:
       - "5011:5001"
       - "5012:5002"
@@ -57,13 +53,11 @@ services:
       MQTT_HOST: broker
       ZONE: zone3
       ZONE_INDEX: "2"
-      NOISE_STD: "0.4"
-      SPIKE_PROB: "0.02"
     ports:
       - "5021:5001"
       - "5022:5002"
 
-  # ---- pioggia globale ----
+  # ---- global rain ----
   rain:
     build: ./services/rain
     environment:

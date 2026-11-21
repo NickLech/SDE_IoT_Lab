@@ -1,12 +1,17 @@
-"""Single soil-moisture sensor (one process, one MQTT connection, one Last Will).
+"""Soil-moisture sensor: one process, one MQTT connection, one Last Will.
 
 Env: ZONE (e.g. zone1), SENSOR_INDEX (1..N)  ->  sensor_id = soil-<zone>-<index>
 
-- Publishes field/<zone>/soil/<sensor_id>         (QoS 0)  {"zone","sensor_id","value","unit","timestamp"}
-- Liveness   field/<zone>/soil/<sensor_id>/status (QoS 1, retained)  "online" | "offline"
-  "offline" is the Last Will (crash/kill) and is also published on graceful stop (SIGTERM),
-  because a clean DISCONNECT does not fire the Will.
-- Subscribes to field/<zone>/sprinkler/state and field/<zone>/rain/state.
+Publishes:
+- field/<zone>/soil/<sensor_id>          (QoS 0)             {"zone","sensor_id","value","unit","timestamp"}
+- field/<zone>/soil/<sensor_id>/status   (QoS 1, retained)   "online" | "offline"
+
+"offline" is the Last Will (crash, kill, network loss). On SIGTERM it is published
+manually, since a clean disconnect does not fire the Will.
+
+Subscribes to field/<zone>/sprinkler/state and field/<zone>/rain/state. Each tick
+moisture drops by a random DRY_MIN..DRY_MAX and rises by WET_STEP for every active
+source, clamped to MIN_MOISTURE..MAX_MOISTURE.
 """
 import json
 import os
@@ -42,7 +47,7 @@ def now_iso():
 class SoilSensor:
     def __init__(self):
         self.moisture = random.uniform(INITIAL_MIN, INITIAL_MAX)
-        self.wet = {s: False for s in SOURCES}
+        self.wet = {s: False for s in SOURCES}  # source -> currently active
         self.client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=SENSOR_ID)
         self.client.on_connect = self.on_connect
         self.client.on_message = self.on_message
@@ -54,7 +59,7 @@ class SoilSensor:
 
     def on_message(self, client, userdata, msg):
         try:
-            source = msg.topic.split("/")[2]
+            source = msg.topic.split("/")[2]  # field/<zone>/<source>/state
             state = json.loads(msg.payload).get("state")
         except (ValueError, AttributeError, IndexError):
             return
@@ -80,7 +85,7 @@ class SoilSensor:
         try:
             self.client.publish(STATUS_TOPIC, "offline", qos=1, retain=True).wait_for_publish(2)
         except (RuntimeError, ValueError):
-            pass
+            pass  # never connected: nothing to publish
         self.client.loop_stop()
         self.client.disconnect()
         print(f"{SENSOR_ID} stopped", flush=True)

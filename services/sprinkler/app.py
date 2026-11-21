@@ -1,19 +1,20 @@
-"""Sprinkler valve of ONE zone: one MQTT connection, one Last Will.
+"""Sprinkler valve of one zone: single MQTT connection with a Last Will.
 
 Env: ZONE (e.g. zone1)
 
-- Command (QoS 1): field/<zone>/sprinkler/cmd     {"action": "on", "duration_s": 30} | {"action": "off"}
-- State (QoS 1, retained): field/<zone>/sprinkler/state   {"state": "on"|"off"}
-- Liveness (QoS 1, retained): field/<zone>/sprinkler/status   "online" | "offline"
-  "offline" is the Last Will (crash/kill/network cut) and is published by hand on graceful
-  stop, where the broker does NOT fire the Will.
-- "on" auto-turns off after duration_s (safety net); a repeated "on" renews it.
+Topics (all QoS 1):
+- field/<zone>/sprinkler/cmd      {"action": "on", "duration_s": 30} | {"action": "off"}
+- field/<zone>/sprinkler/state    {"state": "on"|"off"}   (retained)
+- field/<zone>/sprinkler/status   "online"|"offline"      (retained)
+
+"offline" is the Last Will (crash, kill, network loss). On graceful stop the
+broker does not fire the Will, so it is published manually.
+"on" auto-turns off after duration_s (safety net); a repeated "on" renews it.
 """
 import json
 import os
 import signal
 import threading
-
 import paho.mqtt.client as mqtt
 
 MQTT_HOST = os.environ.get("MQTT_HOST", "localhost")
@@ -41,7 +42,7 @@ class Sprinkler:
     def on_connect(self, client, userdata, flags, reason_code, properties):
         client.subscribe(CMD_TOPIC, qos=1)
         client.publish(STATUS_TOPIC, "online", qos=1, retain=True)
-        self.publish_state("off")
+        self.publish_state("off")  # valve is closed after every (re)connect
 
     def on_message(self, client, userdata, msg):
         try:
@@ -86,7 +87,7 @@ class Sprinkler:
             self.publish_state("off").wait_for_publish(2)
             self.client.publish(STATUS_TOPIC, "offline", qos=1, retain=True).wait_for_publish(2)
         except (RuntimeError, ValueError):
-            pass
+            pass  # never connected: nothing to publish
         self.client.loop_stop()
         self.client.disconnect()
         print(f"sprinkler stopped: {ZONE}", flush=True)

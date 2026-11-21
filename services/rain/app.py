@@ -1,17 +1,16 @@
-"""Rain service (simple): random periodic rain, one MQTT client.
+"""Rain service: random periodic rain on all zones, single MQTT client.
 
-- State (QoS 1, retained): field/<zone>/rain/state
-      {"state": "on"|"off"}
-- Mode (QoS 1, retained, published by the dashboard): field/rain/mode
-      {"mode": "auto"|"dry"|"rain"}
-  In "auto" the service drives the rain state from its random cycle.
-  In "dry" / "rain" the dashboard owns the state: the service keeps its
-  cycle running internally but publishes nothing, so it cannot overwrite
-  the manual override. Switching back to "auto" re-publishes the current
-  simulated state immediately.
-- Cycles have a random length between RAIN_MIN_S and RAIN_MAX_S seconds. In each cycle it rains for
-  RAIN_DURATION_S seconds, on all zones, at the end of the cycle.
-  The cycle starts dry, so the first rain begins after (cycle length - RAIN_DURATION_S).
+Topics (QoS 1, retained):
+- field/<zone>/rain/state   {"state": "on"|"off"}
+- field/rain/mode           {"mode": "auto"|"dry"|"rain"}   (published by the dashboard)
+
+In "auto" the service publishes the simulated state. In "dry"/"rain" the
+dashboard owns the state: the cycle keeps running internally but nothing is
+published, so the manual override is never overwritten. Switching back to
+"auto" re-publishes the current simulated state immediately.
+
+Each cycle lasts a random RAIN_MIN_S..RAIN_MAX_S seconds and starts dry; it
+rains during the last RAIN_DURATION_S seconds.
 """
 import json
 import os
@@ -29,7 +28,7 @@ MODE_TOPIC = "field/rain/mode"
 TICK_S = 5
 RAIN_MIN_S = int(os.environ.get("RAIN_MIN_S", 120))           # shortest cycle
 RAIN_MAX_S = int(os.environ.get("RAIN_MAX_S", 300))           # longest cycle
-RAIN_DURATION_S = int(os.environ.get("RAIN_DURATION_S", 30))  # rain length inside each cycle
+RAIN_DURATION_S = int(os.environ.get("RAIN_DURATION_S", 30))  # rain length at the end of each cycle
 
 MIN_TICKS = RAIN_MIN_S // TICK_S
 MAX_TICKS = RAIN_MAX_S // TICK_S
@@ -43,7 +42,7 @@ class Rain:
         self.pos = 0                          # ticks elapsed in the current cycle
         self.cycle_ticks = self.new_cycle()
         self.raining = False
-        # None = retained mode not received yet (treated as "auto" after the first tick)
+        # None until the retained mode arrives; step() falls back to "auto"
         self.mode = None
         self.lock = threading.Lock()
         self.client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id="rain-service")
@@ -66,11 +65,9 @@ class Rain:
             self.publish_state(zone, state)
 
     def on_connect(self, client, userdata, flags, reason_code, properties):
-        # The retained mode message is delivered right after subscribing.
         client.subscribe(MODE_TOPIC, qos=1)
         with self.lock:
-            # Publish only when we know we are in auto; if the mode is still
-            # unknown, on_message / the first step will decide.
+            # Republish only if already in auto; otherwise on_message / step() decides.
             if self.mode == "auto":
                 self.publish_all()
 
@@ -85,23 +82,23 @@ class Rain:
             previous, self.mode = self.mode, mode
             print(f"mode: {previous} -> {mode}")
             if mode == "auto":
-                self.publish_all()            # realign to the simulated state
+                self.publish_all()            # realign with the simulated state
 
     def step(self):
         with self.lock:
-            if self.mode is None:             # no retained mode arrived: default to auto
+            if self.mode is None:             # no retained mode received: default to auto
                 self.mode = "auto"
                 self.publish_all()
 
             self.pos += 1
-            if self.pos >= self.cycle_ticks:  # cycle over: start a new, dry one with a new random length
+            if self.pos >= self.cycle_ticks:  # cycle over: start a new dry one with a new length
                 self.pos = 0
                 self.cycle_ticks = self.new_cycle()
             raining = self.pos >= self.cycle_ticks - DURATION_TICKS
             if raining != self.raining:
                 self.raining = raining
                 print(f"rain {'ON' if raining else 'OFF'} (mode={self.mode})")
-                if self.mode == "auto":       # in manual modes the cycle advances but nothing is published
+                if self.mode == "auto":       # manual modes: the cycle advances, nothing is published
                     self.publish_all()
 
     def run(self, stop):
@@ -111,7 +108,7 @@ class Rain:
         while not stop.wait(TICK_S):
             self.step()
         with self.lock:
-            # On shutdown, reset to "off" only if we own the state (auto).
+            # On shutdown reset to "off" only if we own the state (auto).
             if self.mode in (None, "auto"):
                 self.raining = False
                 for zone in ZONES:
