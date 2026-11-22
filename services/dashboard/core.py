@@ -1,7 +1,3 @@
-"""Configuration, shared state, MQTT log client and the central poller."""
-
-from __future__ import annotations
-
 import collections
 import json
 import logging
@@ -16,110 +12,93 @@ import paho.mqtt.client as mqtt
 log = logging.getLogger("dashboard")
 
 
-# ---------------------------------------------------------------------------
-# Configuration
-# ---------------------------------------------------------------------------
+def _env(name, default, cast=str):
+    return cast(os.environ.get(name, default))
+
 
 def _env_list(name, default):
-    return [x.strip() for x in os.environ.get(name, default).split(",") if x.strip()]
+    return [item.strip() for item in _env(name, default).split(",") if item.strip()]
 
 
-MQTT_HOST = os.environ.get("MQTT_HOST", "localhost")
-MQTT_PORT = int(os.environ.get("MQTT_PORT", 1883))
-CENTRAL_URL = os.environ.get("CENTRAL_URL", "http://localhost:5100").rstrip("/")
+MQTT_HOST = _env("MQTT_HOST", "localhost")
+MQTT_PORT = _env("MQTT_PORT", 1883, int)
+CENTRAL_URL = _env("CENTRAL_URL", "http://localhost:5100").rstrip("/")
 
 ZONES = _env_list("ZONES", "zone1,zone2,zone3")
 LOG_TOPICS = _env_list("LOG_TOPICS", "field/#,debug/#")
-SENSORS_PER_ZONE = int(os.environ.get("SENSORS_PER_ZONE", 3))
+SENSORS_PER_ZONE = _env("SENSORS_PER_ZONE", 3, int)
 
-MAX_MESSAGES = int(os.environ.get("MAX_MESSAGES", 300))
-HISTORY_N = int(os.environ.get("HISTORY_N", 150))
-REFRESH_MS = int(os.environ.get("REFRESH_MS", 1000))
-POLL_S = float(os.environ.get("POLL_S", 1))
-HTTP_TIMEOUT_S = float(os.environ.get("HTTP_TIMEOUT_S", 1.5))
-CENTRAL_STALE_S = float(os.environ.get("CENTRAL_STALE_S", 5))
-PORT = int(os.environ.get("PORT", 8050))
+MAX_MESSAGES = _env("MAX_MESSAGES", 300, int)
+HISTORY_N = _env("HISTORY_N", 150, int)
+REFRESH_MS = _env("REFRESH_MS", 1000, int)
+POLL_S = _env("POLL_S", 1, float)
+HTTP_TIMEOUT_S = _env("HTTP_TIMEOUT_S", 1.5, float)
+CENTRAL_STALE_S = _env("CENTRAL_STALE_S", 5, float)
+PORT = _env("PORT", 8050, int)
 
-# Global corner-radius token applied to every surface (cards, panels, overlays).
-# app.py's MantineProvider theme maps this token to a size; change either here
-# (which token) or the theme there (the px) to retune every corner at once.
-RADIUS = os.environ.get("RADIUS", "xl")
+RADIUS = _env("RADIUS", "xl")
 
 SENSOR_IDS = {
-    z: [f"soil-{z}-{i}" for i in range(1, SENSORS_PER_ZONE + 1)] for z in ZONES
+    zone: [f"soil-{zone}-{i}" for i in range(1, SENSORS_PER_ZONE + 1)] for zone in ZONES
 }
 
 
-# ---------------------------------------------------------------------------
-# Shared state
-# ---------------------------------------------------------------------------
-
 lock = threading.Lock()
-
-arrivals = collections.deque()
-log_all = collections.deque(maxlen=MAX_MESSAGES)
-log_events = collections.deque(maxlen=MAX_MESSAGES)
-
-history = collections.defaultdict(lambda: collections.deque(maxlen=HISTORY_N))
-water_s = collections.defaultdict(float)
-_last_rec = None
-
-central_view = None
-central_at = None
-central_wall = None
-
 connected = threading.Event()
 
+log_all = collections.deque(maxlen=MAX_MESSAGES)        # every MQTT message
+log_events = collections.deque(maxlen=MAX_MESSAGES)     # without the soil telemetry
+history = collections.defaultdict(lambda: collections.deque(maxlen=HISTORY_N))
+water_s = collections.defaultdict(float)                # seconds of irrigation per zone
 
-# ---------------------------------------------------------------------------
-# MQTT (message log + rain override publisher)
-# ---------------------------------------------------------------------------
+_central_view = None        # latest answer of central's GET /zones
+_central_at = None          # when it arrived, on the monotonic clock
+_central_wall = None        # and on the UTC wall clock
+_last_sample_at = None
 
-def on_connect(client, userdata, flags, reason_code, properties):
+
+def _on_connect(client, userdata, flags, reason_code, properties):
     log.info("connected to broker (%s)", reason_code)
     client.subscribe([(topic, 1) for topic in LOG_TOPICS])
     connected.set()
 
 
-def on_disconnect(client, userdata, disconnect_flags, reason_code, properties):
+def _on_disconnect(client, userdata, disconnect_flags, reason_code, properties):
     log.warning("disconnected from broker (%s)", reason_code)
     connected.clear()
 
 
-def on_message(client, userdata, msg):
-    now = time.monotonic()
-    parts = msg.topic.split("/")
+def _on_message(client, userdata, msg):
     text = msg.payload.decode(errors="replace")
-
     try:
         data = json.loads(text)
     except ValueError:
         data = None
 
-    is_telemetry = len(parts) == 4 and parts[0] == "field" and parts[2] == "soil"
-    payload = json.dumps(data, separators=(",", ":")) if data is not None else text
+    parts = msg.topic.split("/")
+    is_soil_telemetry = len(parts) == 4 and parts[0] == "field" and parts[2] == "soil"
     line = (
         datetime.now(timezone.utc).strftime("%H:%M:%S"),
         "R" if msg.retain else " ",
         msg.topic,
-        payload,
+        text if data is None else json.dumps(data, separators=(",", ":")),
     )
 
     with lock:
-        arrivals.append(now)
         log_all.append(line)
-        if not is_telemetry:
+        if not is_soil_telemetry:
             log_events.append(line)
 
 
 client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id="dashboard")
-client.on_connect = on_connect
-client.on_disconnect = on_disconnect
-client.on_message = on_message
+client.on_connect = _on_connect
+client.on_disconnect = _on_disconnect
+client.on_message = _on_message
 client.reconnect_delay_set(1, 10)
 
 
-def recent_log(telemetry: bool) -> str:
+def recent_log(telemetry):
+    """Return the MQTT log as text, newest first; `telemetry` includes the soil readings."""
     with lock:
         items = list(log_all if telemetry else log_events)
     return "\n".join(
@@ -128,77 +107,75 @@ def recent_log(telemetry: bool) -> str:
     )
 
 
-# ---------------------------------------------------------------------------
-# HTTP pull (central) + history
-# ---------------------------------------------------------------------------
-
-def record_history(view):
-    """Append one sample per zone (called with the lock held)."""
-    global _last_rec
+def _record_history(view):
+    """Append one sample per zone and count the sprinkler time. Call with the lock held."""
+    global _last_sample_at
     now = time.time()
-    dt = 0.0 if _last_rec is None else min(now - _last_rec, 5.0)
-    _last_rec = now
+    # Capped, so that a long gap (central unreachable) is not counted as watering time.
+    elapsed = 0.0 if _last_sample_at is None else min(now - _last_sample_at, 5.0)
+    _last_sample_at = now
 
-    for z, info in (view.get("zones") or {}).items():
+    for zone, info in (view.get("zones") or {}).items():
         sensors = info.get("sensors") or {}
-        on = (info.get("sprinkler") or {}).get("state") == "on"
-        if on:
-            water_s[z] += dt
-        history[z].append({
+        sprinkler_on = (info.get("sprinkler") or {}).get("state") == "on"
+        if sprinkler_on:
+            water_s[zone] += elapsed
+        history[zone].append({
             "t": now,
             "median": (info.get("soil") or {}).get("median"),
             "thr": (info.get("decision") or {}).get("soil_threshold"),
-            "on": on,
-            "s": {k: v.get("value") for k, v in sensors.items()
-                  if v.get("state") == "online"},
+            "on": sprinkler_on,
+            "s": {sid: reading.get("value") for sid, reading in sensors.items()
+                  if reading.get("state") == "online"},
         })
 
 
 def clear_history():
-    global _last_rec
+    """Forget the chart history and the sprinkler time of every zone."""
+    global _last_sample_at
     with lock:
         history.clear()
         water_s.clear()
-        _last_rec = None
+        _last_sample_at = None
 
 
-def poll_central():
-    """Read fused state from central using HTTP GET /zones."""
-    global central_view, central_at, central_wall
-    failing = False
+def _poll_central():
+    """Every POLL_S seconds, read the fused state from central (HTTP GET /zones)."""
+    global _central_view, _central_at, _central_wall
+    url = f"{CENTRAL_URL}/zones"
+    unreachable = False
 
     while True:
         try:
-            with urllib.request.urlopen(f"{CENTRAL_URL}/zones", timeout=HTTP_TIMEOUT_S) as r:
-                view = json.load(r)
+            with urllib.request.urlopen(url, timeout=HTTP_TIMEOUT_S) as response:
+                view = json.load(response)
         except Exception as exc:
-            if not failing:
-                failing = True
-                log.warning("cannot read %s/zones: %s", CENTRAL_URL, exc)
+            if not unreachable:
+                unreachable = True
+                log.warning("cannot read %s: %s", url, exc)
         else:
-            if failing:
-                failing = False
+            if unreachable:
+                unreachable = False
                 log.info("central reachable again")
             with lock:
-                central_view = view
-                central_at = time.monotonic()
-                central_wall = datetime.now(timezone.utc)
-                record_history(view)
+                _central_view = view
+                _central_at = time.monotonic()
+                _central_wall = datetime.now(timezone.utc)
+                _record_history(view)
 
         time.sleep(max(0.05, POLL_S))
 
 
 def snapshot():
-    """Return zones, lag, central status, messages/second and last update time."""
-    now = time.monotonic()
-
+    """Return (zones, central_up, last_update): central's latest view and its freshness."""
     with lock:
-        view, at, wall = central_view, central_at, central_wall
-        while arrivals and now - arrivals[0] > 5:
-            arrivals.popleft()
-        rate = len(arrivals) / 5
+        view, at, wall = _central_view, _central_at, _central_wall
+    up = at is not None and time.monotonic() - at <= CENTRAL_STALE_S
+    return (view.get("zones", {}) if up else {}), up, wall
 
-    up = view is not None and at is not None and now - at <= CENTRAL_STALE_S
-    zones = view.get("zones", {}) if up else {}
-    lag = now - at if up else 0.0
-    return zones, lag, up, rate, wall
+
+def start():
+    """Start the central poller thread and the MQTT client."""
+    threading.Thread(target=_poll_central, daemon=True, name="central-poller").start()
+    client.connect_async(MQTT_HOST, MQTT_PORT, keepalive=30)
+    client.loop_start()

@@ -1,7 +1,6 @@
-"""All dashboard callbacks (registered on import)."""
-
 import json
 from datetime import datetime, timezone
+from functools import partial
 
 from dash import ALL, Input, Output, State, callback, ctx
 from dash.exceptions import PreventUpdate
@@ -10,9 +9,16 @@ import core
 from assignment import grading, monitor
 from components.assignment import badge_state, status_alert
 from components.header import status_rows
-from components.zone_card import (decision_row, modal_title, weather_class,
-                                  zone_facts, zone_hero)
-from viewmodel import chart_props, chart_series, gradient_stops, health_checks, sprinkler_state
+from components.zone_card import decision_row, modal_title, weather_class, zone_facts, zone_hero
+from viewmodel import (chart_props, chart_series, gradient_stops, health_checks,
+                       sprinkler_state)
+
+RAIN_MODE_COLORS = {"auto": "green", "dry": "orange", "rain": "cyan"}
+
+
+def _zone_info(zones, zone):
+    """Return the zone's data from central, or a stub while central is unavailable."""
+    return zones.get(zone) or {"zone": zone}
 
 
 @callback(
@@ -31,55 +37,36 @@ from viewmodel import chart_props, chart_series, gradient_stops, health_checks, 
     Output("status-details", "children"),
     Input("tick", "n_intervals"),
 )
-def refresh(_):
-    zones, _, central_up, _, wall = core.snapshot()
-    zone_ids = [o["id"]["zone"] for o in ctx.outputs_list[0]]
+def refresh(_n_intervals):
+    """Refresh the zone cards and the connection status from the latest data."""
+    zones, central_up, wall = core.snapshot()
+    zone_ids = [output["id"]["zone"] for output in ctx.outputs_list[0]]
+    info = partial(_zone_info, zones)
 
-    def info(z):
-        return zones.get(z) or {"zone": z}
-
-    keys = ("card", "sp_color", "sp_variant", "sp_class",
-            "hero", "data", "lines", "areas", "dec", "facts")
-    col = {k: [] for k in keys}
-
-    for z in zone_ids:
-        i = info(z)
-        col["card"].append(weather_class(i))
-
-        s_color, s_variant, s_pulse = sprinkler_state(i)
-        col["sp_color"].append(s_color)
-        col["sp_variant"].append(s_variant)
-        col["sp_class"].append("sp-pulse" if s_pulse else "")
-
-        col["hero"].append(zone_hero(i))
-
-        data, lines, areas = chart_props(z)
-        col["data"].append(data)
-        col["lines"].append(lines)
-        col["areas"].append(areas)
-
-        col["dec"].append(decision_row(i))
-        col["facts"].append(zone_facts(z, i))
+    rows = [_zone_row(zone, info(zone)) for zone in zone_ids]
+    per_zone = [list(column) for column in zip(*rows)]
 
     checks = health_checks(zone_ids, info, central_up, core.connected.is_set())
-    issues = sum(1 for _, ok, _ in checks if not ok)
-    last = wall.strftime("%H:%M:%S") if wall else "--:--:--"
-    # The pill stays compact — the timestamp lives in the status panel
-    # ("Last update …"), so the button only says LIVE or "n issue(s)".
+    issues = sum(not ok for _, ok, _ in checks)
+    # The button stays compact: the timestamp is in the status panel.
     if issues:
-        conn_text, conn_color = f"{issues} issue{'s' if issues != 1 else ''}", "red"
+        label, color = f"{issues} issue{'s' if issues > 1 else ''}", "red"
     else:
-        conn_text, conn_color = "LIVE", "green"
+        label, color = "LIVE", "green"
+    last_update = wall.strftime("%H:%M:%S") if wall else "--:--:--"
 
+    return (*per_zone, label, color, status_rows(checks, last_update))
+
+
+def _zone_row(zone, info):
+    """Return one value per zone output of refresh(), in the same order."""
+    color, variant, pulse = sprinkler_state(info)
+    data, lines, areas = chart_props(zone)
     return (
-        col["card"], col["sp_color"], col["sp_variant"], col["sp_class"],
-        col["hero"], col["data"], col["lines"], col["areas"],
-        col["dec"], col["facts"],
-        conn_text, conn_color, status_rows(checks, last),
+        weather_class(info), color, variant, "sp-pulse" if pulse else "",
+        zone_hero(info), data, lines, areas, decision_row(info), zone_facts(zone, info),
     )
 
-
-# ---- fullscreen zone ---------------------------------------------------------
 
 @callback(
     Output("zone-modal", "opened"),
@@ -87,7 +74,9 @@ def refresh(_):
     Input({"type": "zone-expand", "zone": ALL}, "n_clicks"),
     prevent_initial_call=True,
 )
-def open_zone(_):
+def open_zone(_n_clicks):
+    """Open the fullscreen modal of the zone whose expand button was clicked."""
+    # The value is empty when the buttons are rendered, not clicked.
     if not ctx.triggered_id or not ctx.triggered[0]["value"]:
         raise PreventUpdate
     return True, ctx.triggered_id["zone"]
@@ -108,25 +97,18 @@ def open_zone(_):
     State("zone-modal", "opened"),
     prevent_initial_call=True,
 )
-def refresh_modal(_, zone, opened):
+def refresh_modal(_n_intervals, zone, opened):
+    """Refresh the fullscreen modal of the opened zone."""
     if not zone or not opened:
         raise PreventUpdate
-    zones = core.snapshot()[0]
-    i = zones.get(zone) or {"zone": zone}
+    info = _zone_info(core.snapshot()[0], zone)
     data, lines, areas = chart_props(zone)
-    return (modal_title(zone, i), zone_hero(i, big=True), data, chart_series(zone),
-            lines, areas, decision_row(i, big=True), zone_facts(zone, i, big=True),
-            weather_class(i, "zone zone-modal"))
+    return (
+        modal_title(zone, info), zone_hero(info, big=True), data, chart_series(zone),
+        lines, areas, decision_row(info, big=True), zone_facts(zone, info, big=True),
+        weather_class(info, "zone zone-modal"),
+    )
 
-
-# ---- popup panels: status popover + log modal -------------------------------
-# Two independent mechanisms now:
-#  * Log drawer is a proper dmc.Modal (withOverlay, withCloseButton, escape and
-#    outside-click all handled by Mantine itself) — DMC reports those closes
-#    back as opened=False, so this callback only ever OPENS it (via open-log).
-#  * The popover uses the #scrim click-catcher (z-index 900) so an outside
-#    click dismisses it while the status panel itself (z-index 1000) stays
-#    clickable. The scrim is only used for the popover, not the modal.
 
 @callback(
     Output("status-details", "display"),
@@ -139,21 +121,23 @@ def refresh_modal(_, zone, opened):
     State("log-drawer", "opened"),
     prevent_initial_call=True,
 )
-def toggle_panels(conn, open_log, scrim_click, status_shown, log_shown):
-    status = status_shown not in (None, "none")
-    log = bool(log_shown)
-    trig = ctx.triggered_id
-    if trig == "conn":
-        status = not status
-    elif trig == "open-log":
-        log = not log
-    elif trig == "scrim":
-        status = False
-    style = {"display": "block"} if status else {"display": "none"}
-    return ("block" if status else "none"), log, style
+def toggle_panels(_conn, _open_log, _scrim, status_display, log_opened):
+    """Toggle the status panel and the log modal; an outside click closes the status panel."""
+    # Mantine closes the log modal itself (Escape, overlay, close button) and reports
+    # opened=False, so this callback only needs to open it. The status panel is a plain
+    # Paper that closes through a click on the scrim.
+    status_open = status_display not in (None, "none")
+    log_open = bool(log_opened)
 
+    if ctx.triggered_id == "conn":
+        status_open = not status_open
+    elif ctx.triggered_id == "open-log":
+        log_open = not log_open
+    elif ctx.triggered_id == "scrim":
+        status_open = False
 
-# ---- log drawer content ------------------------------------------------------
+    display = "block" if status_open else "none"
+    return display, log_open, {"display": display}
 
 
 @callback(
@@ -163,46 +147,44 @@ def toggle_panels(conn, open_log, scrim_click, status_shown, log_shown):
     State("log-drawer", "opened"),
     prevent_initial_call=True,
 )
-def refresh_log(_, telemetry, opened):
+def refresh_log(_n_intervals, telemetry, opened):
+    """Show the latest MQTT messages while the log modal is open."""
     if not opened:
         raise PreventUpdate
     return core.recent_log(bool(telemetry)) or "waiting for messages…"
 
-
-# ---- controls ----------------------------------------------------------------
 
 @callback(
     Output("clear-tip", "label"),
     Input("clear-history", "n_clicks"),
     prevent_initial_call=True,
 )
-def clear_history(_):
+def clear_history(_n_clicks):
+    """Clear the charts' history and report when it happened."""
     core.clear_history()
     return f"Cleared at {datetime.now(timezone.utc).strftime('%H:%M:%S')} UTC"
 
 
-# The active segment's indicator colour follows the choice: leaf/auto -> green,
-# sun/dry -> orange, cloud-rain/rain -> cyan (matches the rain badge). No
-# prevent_initial_call: it also fires on load to set the initial (green) tint.
 @callback(
     Output("rain-mode", "color"),
     Input("rain-mode", "value"),
 )
 def rain_override(mode):
-    color = {"auto": "green", "dry": "orange", "rain": "cyan"}.get(mode, "gray")
+    """Publish the selected rain mode and tint the selector to match it."""
     if core.connected.is_set():
-        # il servizio legge questo topic per sapere se deve comandare lui
-        core.client.publish("field/rain/mode", json.dumps({"mode": mode}),
-                            qos=1, retain=True)
-        if mode != "auto":
-            state = "on" if mode == "rain" else "off"
-            payload = json.dumps({"state": state})
-            for z in core.ZONES:
-                core.client.publish(f"field/{z}/rain/state", payload,
-                                    qos=1, retain=True)
-    return color
+        _publish_rain_mode(mode)
+    return RAIN_MODE_COLORS.get(mode, "gray")
 
-# ---- assignment panel --------------------------------------------------------
+
+def _publish_rain_mode(mode):
+    # The rain service reads this topic to know whether it controls the rain itself.
+    core.client.publish("field/rain/mode", json.dumps({"mode": mode}), qos=1, retain=True)
+    if mode == "auto":
+        return
+    payload = json.dumps({"state": "on" if mode == "rain" else "off"})
+    for zone in core.ZONES:
+        core.client.publish(f"field/{zone}/rain/state", payload, qos=1, retain=True)
+
 
 @callback(
     Output("asg-banner", "children"),
@@ -214,15 +196,13 @@ def rain_override(mode):
     Output("asg-badge", "leftSection"),
     Input("asg-tick", "n_intervals"),
 )
-def refresh_assignment(_):
-    """Charts + completion banner/badge of the Assignment panel (the exercise check).
-
-    Data comes from the exercise client (assignment/monitor.py), the verdict
-    from assignment/grading.py; the view pieces from components/assignment.py.
-    """
+def refresh_assignment(_n_intervals):
+    """Refresh the Assignment panel: charts, completion banner and badge."""
     temp, rain, temp_ok = monitor.snapshot()
     name = grading.full_name(monitor.STUDENT_NAME, monitor.STUDENT_SURNAME)
     missing = grading.missing_todos(name, monitor.ZONE, monitor.RAIN_TOPIC, temp_ok)
-    return (status_alert(name, missing),
-            temp, gradient_stops([p["temperature"] for p in temp]), rain,
-            *badge_state(missing))
+    return (
+        status_alert(name, missing),
+        temp, gradient_stops([p["temperature"] for p in temp]), rain,
+        *badge_state(missing),
+    )

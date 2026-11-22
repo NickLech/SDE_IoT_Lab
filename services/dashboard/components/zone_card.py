@@ -3,8 +3,7 @@ from dash import html
 from dash_iconify import DashIconify
 
 from core import RADIUS, lock, water_s
-from viewmodel import (air_text, chart_series, command_text, decision_info,
-                       sprinkler_state, spread_text, vpd_text)
+from viewmodel import air_text, chart_series, decision_info, sprinkler_state, spread_text, vpd_text
 
 DECISION_ICONS = {
     "Irrigating": "tabler:droplets",

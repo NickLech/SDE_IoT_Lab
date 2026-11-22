@@ -1,24 +1,21 @@
-from __future__ import annotations
-
 from datetime import datetime
 
 from core import SENSOR_IDS, history, lock
 
+# Wording of the VPD bands reported by central.
 VPD_TEXT = {"low": "too humid", "ok": "ok", "optimal": "optimal", "stress": "too dry"}
 
 
-# ---- text ------------------------------------------------------------------
-
 def air_text(info):
     air = info.get("air") or {}
-    t, rh = air.get("temperature"), air.get("humidity")
-    if t is None and rh is None:
+    temperature, humidity = air.get("temperature"), air.get("humidity")
+    if temperature is None and humidity is None:
         return "missing"
-    if t is None:
-        return f"{rh:.0f}% RH, temp missing"
-    if rh is None:
-        return f"{t:.1f}°C, humidity missing"
-    return f"{t:.1f}°C, {rh:.0f}% RH"
+    if temperature is None:
+        return f"{humidity:.0f}% RH, temp missing"
+    if humidity is None:
+        return f"{temperature:.1f}°C, humidity missing"
+    return f"{temperature:.1f}°C, {humidity:.0f}% RH"
 
 
 def vpd_text(info):
@@ -29,22 +26,11 @@ def vpd_text(info):
     return f"{vpd['kpa']:.2f} kPa ({VPD_TEXT.get(band, band)})"
 
 
-def command_text(info):
-    last = info.get("last_command")
-    if not last:
-        return "none"
-    parts = [last.get("action", "?")]
-    if last.get("duration_s") is not None:
-        parts.append(f"{last['duration_s']}s")
-    parts.append(str(last.get("at")))
-    return " · ".join(parts)
-
-
 def spread_text(info):
     sensors = (info.get("sensors") or {}).values()
-    vals = [s["value"] for s in sensors
-            if s.get("state") == "online" and s.get("value") is not None]
-    text = f"± {(max(vals) - min(vals)) / 2:.1f}%" if len(vals) > 1 else "–"
+    readings = [s["value"] for s in sensors
+                if s.get("state") == "online" and s.get("value") is not None]
+    text = f"± {(max(readings) - min(readings)) / 2:.1f}%" if len(readings) > 1 else "–"
     suspects = sum(1 for s in sensors if s.get("suspect"))
     return text + (f" ({suspects} suspect/s)" if suspects else " (no suspects)")
 
@@ -52,33 +38,34 @@ def spread_text(info):
 def decision_info(info):
     """Return (status word, muted detail, alert color, pulse) for the decision row.
 
-    Irrigating is the *live* sprinkler state, not the instantaneous command: central's
-    decide() returns action="on" only on the one tick it fires the command, then keeps
-    the sprinkler running with action=None, so we must key off sprinkler.state too.
+    "Irrigating" follows the live sprinkler state, not only the command: central's
+    decide() returns action="on" just on the tick that fires the command, then None
+    while the sprinkler keeps running.
     """
-    d = info.get("decision") or {}
-    action, reason, thr = d.get("action"), d.get("reason"), d.get("soil_threshold")
+    decision = info.get("decision") or {}
+    action, reason = decision.get("action"), decision.get("reason")
+    threshold = decision.get("soil_threshold")
     running = (info.get("sprinkler") or {}).get("state") == "on"
+
+    # A stop that was just commanded (rain, stop level) outranks the still-open valve.
     if action == "off":
-        # a stop the controller just commanded (rain / stop level) outranks the still-open valve
         return "Stopped", reason, "gray", False
     if running or action == "on":
-        detail = f"soil below {thr:.0f}%" if thr is not None else reason
+        detail = f"soil below {threshold:.0f}%" if threshold is not None else reason
         return "Irrigating", detail, "blue", True
-    if thr is not None:
-        return "Hold", f"irrigate below {thr:.0f}%", "gray", False
+    if threshold is not None:
+        return "Hold", f"irrigate below {threshold:.0f}%", "gray", False
     return "Idle", (str(reason) if reason else "no decision yet"), "gray", False
 
 
 def sprinkler_state(info):
-    """(color, variant, pulse) for the SPRINKLER badge, from the live valve state."""
+    """Return (color, variant, pulse) of the SPRINKLER badge from the live valve state."""
     if (info.get("sprinkler") or {}).get("state") == "on":
         return "blue", "dot", True
     return "gray", "dot", False
 
 
-# ---- charts ----------------------------------------------------------------
-
+# charts
 def chart_series(zone):
     sensors = [{"name": f"s{i}", "color": "gray.5", "type": "line"}
                for i in range(1, len(SENSOR_IDS[zone]) + 1)]
@@ -88,104 +75,133 @@ def chart_series(zone):
 def chart_props(zone):
     """Return (data, referenceLines, referenceAreas) for the zone chart."""
     with lock:
-        pts = list(history.get(zone, []))
+        points = list(history.get(zone, []))
 
     names = {sid: f"s{i}" for i, sid in enumerate(SENSOR_IDS[zone], 1)}
-    data, times, on_flags = [], [], []
-    for p in pts:
-        t = datetime.fromtimestamp(p["t"]).strftime("%H:%M:%S")
-        row = {"t": t, "median": p["median"]}
-        row.update({name: p["s"].get(sid) for sid, name in names.items()})
+    data, times = [], []
+    for point in points:
+        label = datetime.fromtimestamp(point["t"]).strftime("%H:%M:%S")
+        row = {"t": label, "median": point["median"]}
+        row.update({name: point["s"].get(sid) for sid, name in names.items()})
         data.append(row)
-        times.append(t)
-        on_flags.append(p["on"])
+        times.append(label)
 
-    # One shaded band per contiguous sprinkler-ON stretch; an ongoing stretch
-    # reaches the latest sample. Reference areas render behind the series.
-    areas, start = [], None
-    for idx, (t, on) in enumerate(zip(times, on_flags)):
+    threshold = points[-1]["thr"] if points else None
+    lines = [{"y": threshold, "color": "orange.6"}] if threshold is not None else []
+    bands = _sprinkler_bands(times, [point["on"] for point in points])
+    return data, lines, bands[-6:]
+
+
+def _sprinkler_bands(times, on_flags):
+    """Return one shaded band per contiguous sprinkler-on stretch.
+
+    A stretch still running reaches the latest sample.
+    """
+    bands, start = [], None
+    for index, (label, on) in enumerate(zip(times, on_flags)):
         if on and start is None:
-            start = t
+            start = label
         elif not on and start is not None:
-            areas.append({"x1": start, "x2": times[idx - 1], "color": "blue.1"})
+            bands.append({"x1": start, "x2": times[index - 1], "color": "blue.1"})
             start = None
     if start is not None:
-        areas.append({"x1": start, "x2": times[-1], "color": "blue.1"})
-
-    thr = pts[-1]["thr"] if pts else None
-    lines = [{"y": thr, "color": "orange.6"}] if thr is not None else []
-    return data, lines, areas[-6:]
+        bands.append({"x1": start, "x2": times[-1], "color": "blue.1"})
+    return bands
 
 
-# ---- health (every online/offline status lives here) -----------------------
+# health status
+def health_checks(zone_ids, info, central_up, mqtt_up):
+    """Return [(label, ok, detail)], one per check; the header shows LIVE only if all pass."""
+    return [
+        ("Central (HTTP pull)", central_up, "connected" if central_up else "unreachable"),
+        ("Broker (MQTT subscribe)", mqtt_up, "connected" if mqtt_up else "disconnected"),
+        _soil_check(zone_ids, info),
+        _zone_check("Temperature (HTTP pull)", zone_ids, info, _has_air("temperature")),
+        _zone_check("Humidity (HTTP pull)", zone_ids, info, _has_air("humidity")),
+        _zone_check("Sprinklers (MQTT push)", zone_ids, info, _sprinkler_reports),
+        _zone_check("Rain (MQTT push)", zone_ids, info, _rain_reports),
+    ]
+
+
+def _has_air(key):
+    return lambda info: (info.get("air") or {}).get(key) is not None
+
+
+def _sprinkler_reports(info):
+    return (info.get("sprinkler") or {}).get("state") in ("on", "off")
+
+
+def _rain_reports(info):
+    return info.get("rain") in ("on", "off")
+
 
 def _soil_online(info):
     return sum(1 for s in (info.get("sensors") or {}).values() if s.get("state") == "online")
 
 
-def health_checks(zone_ids, info, central_up, mqtt_up):
-    """Return [(label, ok, detail)]; the header shows LIVE only if all are ok."""
-    n = len(zone_ids)
-    rows = [
-        ("Central (HTTP pull)", central_up, "connected" if central_up else "unreachable"),
-        ("Broker (MQTT subscribe)", mqtt_up, "connected" if mqtt_up else "disconnected"),
-    ]
-
-    soil_bad = [f"{z} {_soil_online(info(z))}/{len(SENSOR_IDS[z])}" for z in zone_ids if _soil_online(info(z)) < len(SENSOR_IDS[z])]
-    total = sum(len(SENSOR_IDS[z]) for z in zone_ids)
-    online = sum(_soil_online(info(z)) for z in zone_ids)
-    rows.append(("Soil sensors (MQTT push)", not soil_bad, f"{online} of {total} online" + (f" [{', '.join(soil_bad)}]" if soil_bad else "")))
-
-    def per_zone(label, ok):
-        bad = [z for z in zone_ids if not ok(info(z))]
-        text = f"{n - len(bad)} of {n} online" + (f" [{', '.join(bad)}]" if bad else "")
-        rows.append((label, not bad, text))
-
-    per_zone("Temperature (HTTP pull)", lambda i: (i.get("air") or {}).get("temperature") is not None)
-    per_zone("Humidity (HTTP pull)", lambda i: (i.get("air") or {}).get("humidity") is not None)
-    per_zone("Sprinklers (MQTT push)", lambda i: (i.get("sprinkler") or {}).get("state") in ("on", "off"))
-    per_zone("Rain (MQTT push)", lambda i: i.get("rain") in ("on", "off"))
-    return rows
+def _soil_check(zone_ids, info):
+    online = {zone: _soil_online(info(zone)) for zone in zone_ids}
+    total = sum(len(SENSOR_IDS[zone]) for zone in zone_ids)
+    degraded = [f"{zone} {online[zone]}/{len(SENSOR_IDS[zone])}" for zone in zone_ids
+                if online[zone] < len(SENSOR_IDS[zone])]
+    detail = f"{sum(online.values())} of {total} online"
+    if degraded:
+        detail += f" [{', '.join(degraded)}]"
+    return "Soil sensors (MQTT push)", not degraded, detail
 
 
-# ---- temperature line gradient (assignment panel) --------------------------
+def _zone_check(label, zone_ids, info, is_ok):
+    down = [zone for zone in zone_ids if not is_ok(info(zone))]
+    detail = f"{len(zone_ids) - len(down)} of {len(zone_ids)} online"
+    if down:
+        detail += f" [{', '.join(down)}]"
+    return label, not down, detail
 
-# fixed color thresholds (°C -> color); hex values of red.6 / orange.6 / yellow.5
-# / lime.5 / cyan.5 / blue.5 (Mantine palette)
+
+# temperature line gradient (assignment panel)
+# °C -> color, hottest first (Mantine red.6, orange.6, yellow.5, lime.5, cyan.5, blue.5).
 TEMP_STOP_TABLE = [(30, "#fa5252"), (25, "#fd7e14"), (20, "#fab005"),
                    (15, "#94d82d"), (10, "#3bc9db"), (5, "#4dabf7")]
+DEFAULT_OFFSETS = [0, 25, 42, 62, 83, 100]
 
 
-def color_at(temp):
-    """Color of the table piecewise-linearly interpolated at the given °C value."""
-    temp = max(5.0, min(30.0, temp))
+def _rgb(color):
+    return [int(color[i:i + 2], 16) for i in (1, 3, 5)]
+
+
+def _color_at(temp):
+    """Return the color for `temp` (°C), interpolated linearly between the table stops."""
+    temp = max(TEMP_STOP_TABLE[-1][0], min(TEMP_STOP_TABLE[0][0], temp))
     for (t_hi, c_hi), (t_lo, c_lo) in zip(TEMP_STOP_TABLE, TEMP_STOP_TABLE[1:]):
         if t_lo <= temp <= t_hi:
-            f = (temp - t_lo) / (t_hi - t_lo)
-            lo = [int(c_lo[i:i + 2], 16) for i in (1, 3, 5)]
-            hi = [int(c_hi[i:i + 2], 16) for i in (1, 3, 5)]
-            return "#" + "".join(f"{round(lo[i] + f * (hi[i] - lo[i])):02x}" for i in range(3))
+            fraction = (temp - t_lo) / (t_hi - t_lo)
+            channels = zip(_rgb(c_lo), _rgb(c_hi))
+            return "#" + "".join(f"{round(lo + fraction * (hi - lo)):02x}" for lo, hi in channels)
     return TEMP_STOP_TABLE[-1][1]
 
 
 def gradient_stops(values):
-    """Stops that link the line color to the ABSOLUTE temperature.
+    """Return the gradient stops that tie the line color to the absolute temperature.
 
-    The SVG gradient has no gradientUnits, so it spans the curve's own
-    bounding box: offset 0 is the window maximum, 100 the window minimum.
-    To keep a pixel's color tied to its °C value, every threshold strictly
-    inside the current window gets a stop at offset = 100 * (wmax - T) / (wmax - wmin),
-    and the two window edges get the interpolated colors at wmax / wmin.
+    The SVG gradient has no gradientUnits, so it spans the curve's own bounding box:
+    offset 0 is the maximum of the window, offset 100 its minimum. To keep a pixel's
+    color tied to its °C value, every table temperature strictly inside the window gets
+    a stop at 100 * (max - T) / (max - min), and both edges get the interpolated color.
     """
-    if not values:                                   # chart not fed yet: default ramp
-        ramp = ["#fa5252", "#fd7e14", "#fab005", "#94d82d", "#3bc9db", "#4dabf7"]
-        return [{"offset": o, "color": c} for o, c in zip([0, 25, 42, 62, 83, 100], ramp)]
-    wmax, wmin = max(values), min(values)
-    span = wmax - wmin
-    if span < 0.05:                                  # flat line: one solid color for its value
-        color = color_at(wmax)
+    if not values:
+        # The chart has no data yet: show the whole table.
+        return [{"offset": offset, "color": color}
+                for offset, (_, color) in zip(DEFAULT_OFFSETS, TEMP_STOP_TABLE)]
+
+    highest, lowest = max(values), min(values)
+    span = highest - lowest
+    if span < 0.05:
+        # A flat line gets one solid color.
+        color = _color_at(highest)
         return [{"offset": 0, "color": color}, {"offset": 100, "color": color}]
-    stops = [(0.0, color_at(wmax))]                  # color at the top of the curve
-    stops += [(100.0 * (wmax - t) / span, c) for t, c in TEMP_STOP_TABLE if wmin < t < wmax]
-    stops.append((100.0, color_at(wmin)))            # color at the bottom of the curve
+
+    stops = [(0.0, _color_at(highest))]
+    stops += [(100.0 * (highest - t) / span, color)
+              for t, color in TEMP_STOP_TABLE if lowest < t < highest]
+    stops.append((100.0, _color_at(lowest)))
     return [{"offset": round(offset), "color": color} for offset, color in stops]

@@ -1,6 +1,5 @@
 import logging
 import os
-import threading
 
 # dash-mantine-components v3 needs React 19, but Dash 4 still ships React 18.3.1 by default.
 from dash._dash_renderer import _set_react_version
@@ -72,9 +71,7 @@ def main():
         level=os.environ.get("LOG_LEVEL", "INFO"),
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
-    threading.Thread(target=core.poll_central, daemon=True, name="central-poller").start()
-    core.client.connect_async(core.MQTT_HOST, core.MQTT_PORT, keepalive=30)
-    core.client.loop_start()
+    core.start()
     monitor.start()
     log.info("serving on port %d, central at %s", core.PORT, core.CENTRAL_URL)
     serve(app.server, host="0.0.0.0", port=core.PORT, threads=16)
