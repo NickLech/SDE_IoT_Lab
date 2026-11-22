@@ -1,10 +1,3 @@
-"""Communication with the other nodes. Two concerns:
-
-  MQTT  (push)  soil sensors, sprinkler state/commands, rain  +  our own sprinkler commands
-  HTTP  (pull)  air temperature and humidity services
-
-It only moves data in and out of `state`; no fusion or decision logic here.
-"""
 import collections
 import json
 import logging
@@ -15,32 +8,39 @@ import urllib.request
 import paho.mqtt.client as mqtt
 
 from components import state
-from components.config import (AIR_WINDOW, HTTP_TIMEOUT_S, HUMIDITY_URL, MQTT_HOST, MQTT_PORT, POLL_INTERVAL_S,
-                               SPRINKLER_DEFAULT_S, TEMPERATURE_URL, ZONES)
+from components.config import (AIR_WINDOW, HTTP_TIMEOUT_S, HUMIDITY_URL, MQTT_HOST, MQTT_PORT,
+                               POLL_INTERVAL_S, SPRINKLER_DEFAULT_S, TEMPERATURE_URL, ZONES)
 from components.state import is_number, lock
 
 log = logging.getLogger("central.comms")
 
-# =============================================================================== 1. MQTT
-#   field/<zone>/soil/<sensor_id>          {"value": %}
-#   field/<zone>/soil/<sensor_id>/status   "online" | "offline"   (Last Will)
-#   field/<zone>/sprinkler/state           {"state": "on"|"off"}  (retained)
-#   field/<zone>/sprinkler/status          "online" | "offline"   (Last Will)
-#   field/<zone>/sprinkler/cmd             {"action": "on"|"off", "duration_s": N, "source": "central"?}
-#   field/<zone>/rain/state                {"state": "on"|"off"}
 
+# ---- MQTT (push) ---------------------------------------------------------------
+# Topics, all under field/<zone>/:
+#   soil/<sensor_id>          {"value": %}
+#   soil/<sensor_id>/status   "online" | "offline"      (Last Will)
+#   sprinkler/state           {"state": "on" | "off"}   (retained)
+#   sprinkler/status          "online" | "offline"      (Last Will)
+#   sprinkler/cmd             {"action": "on" | "off", "duration_s": N}
+#                             central adds "source": "central" to its own commands
+#   rain/state                {"state": "on" | "off"}
 
 def on_connect(client, userdata, flags, reason_code, properties):
     log.info("connected to broker (%s)", reason_code)
-    # Exercise 2 — MQTT push
+    # Exercise 2 - MQTT push
     # Soil sensors publish their readings on field/<zone>/soil/<sensor_id>.
-    # TODO: subscribe to all soil values with a single wildcard topic (QoS 1),
-    #       following the pattern of the topics below.
-    # Hint: "field/+/soil/+" has 4 levels; the /status topics stay separate.
+    # TODO: subscribe to all soil readings with a single wildcard topic (QoS 1), following
+    #       the pattern of the topics below.
+    # Hint: "field/+/soil/+" has four levels; the /status topics are subscribed separately.
     # Done when: the MQTT panel is green and all 9 soil sensors appear.
-    client.subscribe([("field/+/soil/+", 1), ("field/+/soil/+/status", 1), ("field/+/sprinkler/state", 1),
-                      ("field/+/sprinkler/status", 1), ("field/+/sprinkler/cmd", 1), ("field/+/rain/state", 1)])
-
+    client.subscribe([
+        ("field/+/soil/+", 1),          # solution
+        ("field/+/soil/+/status", 1),
+        ("field/+/sprinkler/state", 1),
+        ("field/+/sprinkler/status", 1),
+        ("field/+/sprinkler/cmd", 1),
+        ("field/+/rain/state", 1),
+    ])
     state.connected.set()
 
 
@@ -63,33 +63,50 @@ def on_message(client, userdata, msg):
 
     with lock:
         if kind == "soil" and len(parts) == 4:
-            if isinstance(data, dict) and is_number(data.get("value")):
-                state.soil[(zone, parts[3])] = (float(data["value"]), now)
+            _store_soil_reading(zone, parts[3], data, now)
         elif kind == "soil" and len(parts) == 5 and parts[4] == "status":
             state.status[(zone, parts[3])] = text
         elif kind == "rain" and len(parts) == 4 and parts[3] == "state" and isinstance(data, dict):
             state.rain[zone] = data.get("state")
-        elif kind == "sprinkler" and parts[3] == "status":     # field/<zone>/sprinkler/status (plain text)
+        elif kind == "sprinkler" and parts[3] == "status":
             state.sprinkler_status[zone] = text
         elif kind == "sprinkler" and len(parts) == 4 and isinstance(data, dict):
             if parts[3] == "cmd":
-                manual = data.get("source") != "central"      # our own commands are tagged, anything else is manual
-                if data.get("action") == "on":
-                    duration = data.get("duration_s", SPRINKLER_DEFAULT_S)
-                    if is_number(duration):
-                        state.cmd_until[zone] = now + float(duration)
-                        if manual:
-                            state.manual_until[zone] = now + float(duration)
-                elif data.get("action") == "off":
-                    state.cmd_until.pop(zone, None)
-                    if manual:
-                        state.manual_until[zone] = now      # override ends now (the cooldown starts)
+                _store_command(zone, data, now)
             elif parts[3] == "state":
-                new_state = data.get("state")
-                sp = state.sprinkler[zone]
-                sp["state"] = new_state
-                # keep the known end time across repeated "on" states; clear it otherwise
-                sp["until"] = state.cmd_until.pop(zone, sp["until"]) if new_state == "on" else None
+                _store_sprinkler_state(zone, data)
+
+
+def _store_soil_reading(zone, sensor_id, data, now):
+    if isinstance(data, dict) and is_number(data.get("value")):
+        state.soil[(zone, sensor_id)] = (float(data["value"]), now)
+
+
+def _store_command(zone, data, now):
+    """Track how long a command keeps the sprinkler on, and whether a person sent it."""
+    manual = data.get("source") != "central"      # central tags its own commands
+    action = data.get("action")
+    if action == "on":
+        duration = data.get("duration_s", SPRINKLER_DEFAULT_S)
+        if is_number(duration):
+            state.cmd_until[zone] = now + float(duration)
+            if manual:
+                state.manual_until[zone] = now + float(duration)
+    elif action == "off":
+        state.cmd_until.pop(zone, None)
+        if manual:
+            state.manual_until[zone] = now        # the override ends now, the cooldown starts
+
+
+def _store_sprinkler_state(zone, data):
+    new_state = data.get("state")
+    sprinkler = state.sprinkler[zone]
+    sprinkler["state"] = new_state
+    # A repeated "on" keeps the end time already known; any other state clears it.
+    if new_state == "on":
+        sprinkler["until"] = state.cmd_until.pop(zone, sprinkler["until"])
+    else:
+        sprinkler["until"] = None
 
 
 client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id="central")
@@ -100,7 +117,7 @@ client.reconnect_delay_set(1, 10)
 
 
 def send_command(zone, action, duration_s=None):
-    """Publishes a sprinkler command tagged with source=central (so it is not mistaken for a manual one)."""
+    """Publish a sprinkler command tagged source=central, so it is not taken for a manual one."""
     payload = {"action": action, "source": "central"}
     if action == "on":
         payload["duration_s"] = round(duration_s)
@@ -118,40 +135,49 @@ def stop_mqtt():
     client.disconnect()
 
 
-# ================================================================================ 2. HTTP
-#   GET $TEMPERATURE_URL/zones/<zone>/temperature   {"value": degC}   ("{zone}" in the URL -> zone name)
+# ---- HTTP (pull) ---------------------------------------------------------------
+#   GET $TEMPERATURE_URL/zones/<zone>/temperature   {"value": °C}
 #   GET $HUMIDITY_URL/zones/<zone>/humidity         {"value": %RH}
-#   Each value is appended to a small window (AIR_WINDOW samples); fusion.py takes the median.
-
+# "{zone}" in a base URL is replaced by the zone name. Each value is appended to a small
+# window of AIR_WINDOW samples; fusion.py takes its median.
 
 def poll_loop():
-    """Polls the temperature and humidity services and stores the last value per zone."""
-    failing = set()
+    """Poll the temperature and humidity services and store the recent values per zone."""
+    unreachable = set()
     while True:
         for zone in ZONES:
-            # Exercise 1 — HTTP pull (humidity)
-            # Each sensor type is a tuple: (name, target store, base URL).
-            # TODO: add the humidity tuple, following the temperature pattern
-            #       (it stores into `state.humid` and uses `HUMIDITY_URL`).
+            # Exercise 1 - HTTP pull (humidity)
+            # Each sensor type is a tuple (name, store, base URL).
+            # TODO: add the humidity tuple, following the temperature one: it stores into
+            #       `state.humid` and uses `HUMIDITY_URL`.
             # Done when: the HTTP panel is green for both temperature and humidity.
-            for name, store, base in (("temperature", state.temp, TEMPERATURE_URL),
-                                      ("humidity", state.humid, HUMIDITY_URL),  # solution
-                                      ):
-                url = f"{base.format(zone=zone)}/zones/{zone}/{name}"
-                try:
-                    with urllib.request.urlopen(url, timeout=HTTP_TIMEOUT_S) as resp:
-                        value = float(json.load(resp)["value"])
-                except Exception as exc:       # network, HTTP status, bad JSON...
-                    if url not in failing:
-                        failing.add(url)
-                        log.warning("cannot read %s: %s", url, exc)
-                    continue
-                if url in failing:
-                    failing.discard(url)
-                    log.info("%s reachable again", url)
-                with lock:
-                    store.setdefault(zone, collections.deque(maxlen=AIR_WINDOW)).append((value, time.monotonic()))
+            sensors = (
+                ("temperature", state.temp, TEMPERATURE_URL),
+                ("humidity", state.humid, HUMIDITY_URL),        # solution
+            )
+            for name, store, base in sensors:
+                _poll_sensor(zone, name, store, base, unreachable)
         time.sleep(POLL_INTERVAL_S)
+
+
+def _poll_sensor(zone, name, store, base, unreachable):
+    """Read one value over HTTP; log only when the service goes away and when it comes back."""
+    url = f"{base.format(zone=zone)}/zones/{zone}/{name}"
+    try:
+        with urllib.request.urlopen(url, timeout=HTTP_TIMEOUT_S) as response:
+            value = float(json.load(response)["value"])
+    except Exception as exc:       # network, HTTP status, bad JSON...
+        if url not in unreachable:
+            unreachable.add(url)
+            log.warning("cannot read %s: %s", url, exc)
+        return
+
+    if url in unreachable:
+        unreachable.discard(url)
+        log.info("%s reachable again", url)
+    with lock:
+        window = store.setdefault(zone, collections.deque(maxlen=AIR_WINDOW))
+        window.append((value, time.monotonic()))
 
 
 def start_polling():
